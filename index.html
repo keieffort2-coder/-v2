@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>良药专用</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-icon">
+            <svg viewBox="0 0 24 24"><path d="M7 7h10v10H7z" /><path d="M9 7V5h6v2" /><path d="m9 13 2 2 4-5" /></svg>
+          </div>
+          <div>
+            <strong>AIVideoBox</strong>
+            <span>Creative pipeline</span>
+          </div>
+        </div>
+
+        <nav class="side-nav" aria-label="主导航">
+          <button class="nav-item active" data-page="home" type="button">
+            <svg viewBox="0 0 24 24"><path d="m3 11 9-8 9 8" /><path d="M5 10v10h14V10" /></svg>
+            首页
+          </button>
+          <button class="nav-item" data-page="projects" type="button">
+            <svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z" /><path d="M8 9h8M8 13h5" /></svg>
+            工作台
+          </button>
+          <button class="nav-item" data-page="gallery" type="button">
+            <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" /><path d="m8 15 2.4-2.4 2.1 2.1L15.5 11 20 16" /></svg>
+            作品广场
+          </button>
+          <button class="nav-item" data-page="tasks" type="button">
+            <svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13" /><path d="m3 6 1 1 2-2M3 12l1 1 2-2M3 18l1 1 2-2" /></svg>
+            任务大厅
+          </button>
+          <button class="nav-item" data-page="templates" type="button">
+            <svg viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" /></svg>
+            模板库
+          </button>
+          <button class="nav-item" data-page="assets" type="button">
+            <svg viewBox="0 0 24 24"><path d="M4 7h16v12H4z" /><path d="M7 7V5h10v2" /><path d="M8 11h8" /></svg>
+            素材库
+          </button>
+        </nav>
+
+        <div class="nav-divider"><span>工具</span></div>
+        <button class="nav-item points" type="button">
+          <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+          积分
+        </button>
+
+        <div class="account">1160340860@qq.com</div>
+      </aside>
+
+      <main class="main-area">
+        <section class="page active" id="page-home">
+          <section class="hero-card grid-bg">
+            <span class="kicker">
+              <svg viewBox="0 0 24 24"><path d="M6 12h12M8 8l-4 4 4 4M16 8l4 4-4 4" /></svg>
+              GAME CREATOR OPS
+            </span>
+            <h1>游戏官方需求、参考素材、可复用画布，集中到同一个生产台。</h1>
+            <p>AIVideoBox 面向游戏类创作者，把任务 brief、官方素材、作品案例、项目模板和个人素材库串成一条可执行的创作链路。</p>
+            <div class="hero-links">
+              <button data-page="gallery" type="button">
+                <span><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z" /><path d="m8 15 3-3 2 2 3-4" /></svg></span>
+                <strong>作品广场</strong>
+                <small>看游戏创作者成片与创作过程</small>
+              </button>
+              <button data-page="tasks" type="button">
+                <span><svg viewBox="0 0 24 24"><path d="M9 11 12 14 22 4" /><path d="M21 12v7H3V5h12" /></svg></span>
+                <strong>任务大厅</strong>
+                <small>承接官方主题与宣传需求</small>
+              </button>
+              <button data-page="projects" type="button">
+                <span><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z" /><path d="M8 9h8M8 13h5" /></svg></span>
+                <strong>工作台</strong>
+                <small>管理项目表并打开画布</small>
+              </button>
+              <button data-page="assets" type="button">
+                <span><svg viewBox="0 0 24 24"><path d="M4 7h16v12H4z" /><path d="M7 7V5h10v2" /></svg></span>
+                <strong>素材库</strong>
+                <small>管理我的素材与平台素材</small>
+              </button>
+            </div>
+          </section>
+        </section>
+
+        <section class="page" id="page-projects">
+          <section class="project-board workspace-board">
+            <div class="project-board-head">
+              <div>
+                <span class="kicker">WORKSPACE</span>
+                <h1>工作台</h1>
+                <p>集中管理全部画布项目。继续编辑已有工作流，或通过项目码克隆其他人的可编辑项目。</p>
+              </div>
+              <div class="project-create">
+                <div class="create-row">
+                  <input id="projectNameInput" type="text" placeholder="项目名称" />
+                  <button class="yellow-button" id="createProject" type="button">+ 新建</button>
+                </div>
+                <div class="create-row">
+                  <input id="projectCodeInput" type="text" placeholder="输入项目码" />
+                  <button class="subtle-button" id="cloneProject" type="button">克隆</button>
+                </div>
+              </div>
+            </div>
+            <div class="project-grid workspace-project-grid empty" id="projectGrid"></div>
+          </section>
+
+          <section class="hero-card grid-bg legacy-home-section">
+            <span class="kicker">
+              <svg viewBox="0 0 24 24"><path d="M6 12h12M8 8l-4 4 4 4M16 8l4 4-4 4" /></svg>
+              GAME CREATOR OPS
+            </span>
+            <h1>游戏官方需求、参考素材、可复用画布，集中到同一个生产台。</h1>
+            <p>AIVideoBox 面向游戏类创作者，把任务 brief、官方素材、作品案例、项目模板和个人素材库串成一条可执行的创作链路。</p>
+            <div class="hero-links">
+              <button data-page="gallery" type="button">
+                <span><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z" /><path d="m8 15 3-3 2 2 3-4" /></svg></span>
+                <strong>作品广场</strong>
+                <small>看游戏创作者成片与创作过程</small>
+              </button>
+              <button data-page="tasks" type="button">
+                <span><svg viewBox="0 0 24 24"><path d="M9 11 12 14 22 4" /><path d="M21 12v7H3V5h12" /></svg></span>
+                <strong>任务大厅</strong>
+                <small>承接官方主题与宣传需求</small>
+              </button>
+              <button data-page="templates" type="button">
+                <span><svg viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" /></svg></span>
+                <strong>模板库</strong>
+                <small>完整游戏视频工作流</small>
+              </button>
+              <button data-page="assets" type="button">
+                <span><svg viewBox="0 0 24 24"><path d="M4 7h16v12H4z" /><path d="M7 7V5h10v2" /></svg></span>
+                <strong>素材库</strong>
+                <small>管理我的素材与平台素材</small>
+              </button>
+            </div>
+          </section>
+
+          <section class="brief-card legacy-home-section">
+            <div class="visual-placeholder">
+              <div class="tag">任务横幅图片占位</div>
+              <div class="badge">16:9 KEY VISUAL</div>
+              <div class="visual-footer">
+                <svg viewBox="0 0 24 24"><path d="M4 7h16v12H4z" /><path d="m8 7 1-3h6l1 3" /></svg>
+                <div>
+                  <strong>官方素材预览区</strong>
+                  <small>后续可替换为任务封面、人物原画或场景概念图</small>
+                </div>
+              </div>
+            </div>
+            <div class="brief-info">
+              <div class="brief-top">
+                <span class="kicker">LATEST BRIEF</span>
+                <span class="deadline">6 天后截止</span>
+              </div>
+              <h2>《炽境边陲》赛季角色 PV 征集</h2>
+              <p>围绕新赛季火山边境，制作 8-15 秒角色登场短片，可选官方原画节点与场景素材。</p>
+              <div class="chips">
+                <span>角色登场</span>
+                <span>赛季宣发</span>
+                <span>竖版短片</span>
+              </div>
+              <div class="reward">官方买量候选 / 最高 30,000 积分</div>
+              <button class="yellow-button" type="button" data-page="tasks">查看任务大厅</button>
+            </div>
+          </section>
+
+          <section class="task-section legacy-home-section">
+            <div class="section-title">
+              <div>
+                <span class="kicker">AIVIDEOBOX</span>
+                <h2>任务大厅</h2>
+                <p>最近的游戏官方宣传需求</p>
+              </div>
+              <button class="subtle-button" data-page="tasks" type="button">查看全部</button>
+            </div>
+            <div class="task-grid">
+              <article class="task-card">
+                <div class="task-meta"><span>Northlight Games</span><span>6 天后截止</span></div>
+                <h3>《炽境边陲》赛季角色 PV 征集</h3>
+                <p>围绕新赛季火山边境，制作 8-15 秒角色登场短片，可选官方原画节点与场景素材。</p>
+                <strong>官方买量候选 / 最高 30,000 积分</strong>
+              </article>
+              <article class="task-card">
+                <div class="task-meta"><span>Arcforge Studio</span><span>12 天后截止</span></div>
+                <h3>机甲技能连招展示任务</h3>
+                <p>用官方机甲三视图和技能文字设定，生成连招演示、镜头推拉和结尾 Logo 定格。</p>
+                <strong>官方精选 / 最高 18,000 积分</strong>
+              </article>
+              <article class="task-card">
+                <div class="task-meta"><span>Sunberry Interactive</span><span>18 天后截止</span></div>
+                <h3>休闲经营活动剧情短片</h3>
+                <p>根据活动世界观文本和 NPC 原画，产出温暖、轻剧情、适合社区传播的短视频。</p>
+                <strong>素材礼包 / 最高 12,000 积分</strong>
+              </article>
+            </div>
+          </section>
+        </section>
+
+        <section class="page workspace-page" id="page-workspace">
+          <div class="workspace-layout">
+            <aside class="conversation-panel">
+              <div class="conversation-head">
+                <span class="kicker">CHAT TO NODE</span>
+                <h2 id="workspaceProjectName">炽境边陲赛季 PV</h2>
+                <p>点击任意对话，它会变成画布右侧的输出节点。节点类型可在文本、图片、视频之间切换。</p>
+              </div>
+              <form class="memory-composer" id="memoryComposer">
+                <textarea id="memoryInput" placeholder="记录一条对话、需求或提示词..."></textarea>
+                <div class="memory-actions">
+                  <select id="memoryType">
+                    <option value="image">图片</option>
+                    <option value="text">文本</option>
+                    <option value="video">视频</option>
+                  </select>
+                  <button class="yellow-button" type="submit">保存记忆</button>
+                </div>
+              </form>
+              <div class="chat-list" id="memoryList">
+                <button class="chat-item active" type="button" data-type="video" data-title="角色登场镜头" data-content="把角色从暗处走向红色警戒灯，镜头低角度推进，保留火山边境的压迫感。">
+                  <strong>角色登场镜头</strong>
+                  <small>把文字需求转换为视频节点，可继续接图片参考。</small>
+                </button>
+                <button class="chat-item" type="button" data-type="image" data-title="场景重建图片" data-content="完全参考输入图的破碎地面、墙体结构和红色光源，生成一张更清晰的场景参考图。">
+                  <strong>场景重建图片</strong>
+                  <small>适合生成图片输出节点。</small>
+                </button>
+                <button class="chat-item" type="button" data-type="text" data-title="官方 brief 拆解" data-content="拆解任务目标、不可出现内容、交付比例、镜头节奏和素材依赖。">
+                  <strong>官方 brief 拆解</strong>
+                  <small>适合生成文本输出节点。</small>
+                </button>
+              </div>
+            </aside>
+
+            <div class="workspace-canvas">
+              <button class="folder-exit-top" id="folderExitTop" type="button" hidden>返回主画布</button>
+              <div class="canvas-content">
+                <svg class="connectors" viewBox="0 0 5000 5000" preserveAspectRatio="none"></svg>
+              </div>
+              <div class="canvas-toolbar">
+                <button class="active" id="arrangeCanvasNodes" type="button" title="整理画布节点" aria-label="整理画布节点">▦</button>
+                <button id="createFolderFromSelection" type="button" title="把选中节点放入文件夹" aria-label="把选中节点放入文件夹"><span class="folder-mini-icon" aria-hidden="true"></span></button>
+                <button id="exitFolderCanvas" type="button" title="返回上级画布" aria-label="返回上级画布" hidden>返</button>
+                <button id="resetCanvasView" type="button" title="重置视图" aria-label="重置视图">⌖</button>
+                <button id="zoomCanvasOut" type="button" title="缩小" aria-label="缩小">−</button>
+                <strong id="canvasZoomLabel">100%</strong>
+                <button id="zoomCanvasIn" type="button" title="放大" aria-label="放大">＋</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="page" id="page-assets">
+          <div class="assets-header">
+            <div>
+              <span class="kicker">ASSETS</span>
+              <h1>素材库</h1>
+              <p>管理可直接进入画布的素材节点。画布中保存的节点会进入我的素材，后续任务素材和平台通用素材也会沉淀在这里。</p>
+            </div>
+            <button class="subtle-button" data-page="projects" type="button">返回工作台</button>
+          </div>
+
+          <div class="assets-actions">
+            <button class="yellow-button" data-page="projects" type="button">+ 去工作台</button>
+          </div>
+
+          <section class="my-assets">
+            <h2>我的素材</h2>
+            <p>从画布保存的文本、图片、视频或者音频节点。</p>
+            <div class="empty-assets">
+              <div>T</div>
+              <strong>还没有我的素材</strong>
+              <span>进入画布后选中调好的节点，点击左侧工具栏的素材库按钮，再保存为我的素材。</span>
+            </div>
+          </section>
+
+          <section class="platform-assets">
+            <h2>平台素材</h2>
+            <p>面向游戏宣发生产的通用节点素材。</p>
+            <div class="asset-library-grid">
+              <article>
+                <span class="asset-icon">▰</span>
+                <small>文本素材</small>
+                <h3>游戏镜头语言节点包</h3>
+                <p>包含 Boss 压迫感、角色登场、技能符号、环境揭示等常用镜头指令。</p>
+                <button type="button">+ 加入我的素材</button>
+              </article>
+              <article>
+                <span class="asset-icon">▣</span>
+                <small>文本素材</small>
+                <h3>官方需求解析节点</h3>
+                <p>把厂家 brief 拆成主题、禁用项、素材职责、交付规格和可执行 prompt。</p>
+                <button type="button">+ 加入我的素材</button>
+              </article>
+              <article>
+                <span class="asset-icon">▧</span>
+                <small>图片素材</small>
+                <h3>高转化风格参考组</h3>
+                <p>面向买量视频的 UI 高光、角色符号、场景冲突和奖励反馈参考。</p>
+                <button type="button">+ 加入我的素材</button>
+              </article>
+            </div>
+          </section>
+        </section>
+
+        <section class="page placeholder-page" id="page-gallery">
+          <h1>作品广场</h1>
+          <p>这里展示游戏创作者成片、参考素材和可复用流程。</p>
+        </section>
+
+        <section class="page placeholder-page" id="page-tasks">
+          <h1>任务大厅</h1>
+          <p>这里汇总官方发布的宣发需求、截止日期、奖励和素材包。</p>
+        </section>
+
+        <section class="page placeholder-page" id="page-templates">
+          <h1>模板库</h1>
+          <p>这里管理可复用的节点画布模板和视频生产流程。</p>
+        </section>
+      </main>
+    </div>
+
+    <template id="nodeTemplate">
+      <div class="node output-node" data-kind="output" data-type="text" data-tone="slot-b">
+        <div class="node-head">
+          <div class="node-title"><span class="ok"></span><strong>新节点</strong></div>
+          <select class="node-type-select" aria-label="节点类型">
+            <option value="text" selected>文本</option>
+            <option value="image">图片</option>
+            <option value="video">视频</option>
+          </select>
+        </div>
+        <small class="node-type-label">Text</small>
+        <div class="node-body">
+          <div class="text-slot">文本节点用于承载普通智能对话、brief、prompt 或需求拆解。</div>
+        </div>
+        <p class="node-description">文本节点用于承载普通智能对话、brief、prompt 或需求拆解。</p>
+        <button class="node-port in" type="button" aria-label="连接输入"></button>
+        <button class="node-port out" type="button" aria-label="连接输出"></button>
+      </div>
+    </template>
+
+    <div class="context-menu" id="canvasContextMenu" role="menu" aria-hidden="true">
+      <div class="context-title">新建节点</div>
+      <button type="button" data-create-type="text">文本节点</button>
+      <button type="button" data-create-type="image">图片节点</button>
+      <button type="button" data-create-type="video">视频节点</button>
+    </div>
+
+    <div class="context-menu" id="nodeContextMenu" role="menu" aria-hidden="true">
+      <div class="context-title">节点操作</div>
+      <button type="button" data-menu-action="type-text">改为文本</button>
+      <button type="button" data-menu-action="type-image">改为图片</button>
+      <button type="button" data-menu-action="type-video">改为视频</button>
+      <button type="button" data-menu-action="run">运行节点</button>
+      <button type="button" data-menu-action="duplicate">复制节点</button>
+      <button type="button" data-menu-action="ungroup-folder">取消文件夹</button>
+      <button type="button" data-menu-action="delete">删除节点</button>
+    </div>
+
+    <div class="context-menu" id="imageUploadContextMenu" role="menu" aria-hidden="true">
+      <div class="context-title">处理上传图片</div>
+      <button type="button" data-upload-action="replace">换图上传</button>
+      <button type="button" data-upload-action="delete">删除已上传图片</button>
+    </div>
+
+    <div class="context-menu port-connection-menu" id="portConnectionContextMenu" role="menu" aria-hidden="true">
+      <div class="context-title">连接节点</div>
+      <div class="port-connection-list"></div>
+    </div>
+
+    <div class="node-config-panel" id="imageConfigPanel" aria-hidden="true">
+      <div class="config-tabs">
+        <button class="config-tab active" type="button" id="configNodeName">图片节点</button>
+        <button class="config-icon" type="button" title="添加素材/引用" id="openReferencePicker">＋</button>
+      </div>
+      <textarea id="imagePromptInput" placeholder="输入提示词描述..."></textarea>
+      <div class="config-footer">
+        <select id="imageModelSelect">
+          <option value="gpt-image-2">GPT图像2</option>
+          <option value="gpt-image-2-official" selected>gpt-image-2-官方</option>
+          <option value="gemini-3-pro-image-preview">Nano Banana 2</option>
+        </select>
+        <span class="fixed-api-channel">ApiMart 通道 B</span>
+        <button class="config-pill" type="button" id="openImageOptions">自定义 / 结构+风格 / 普通图 / 尺寸提示词优先，默认结构图 / high</button>
+        <button class="config-submit" type="button" id="submitImageConfig">提交</button>
+      </div>
+    </div>
+
+    <div class="image-options-popover" id="imageOptionsPopover" aria-hidden="true">
+      <div class="option-group full">
+        <span>图片用途</span>
+        <div class="option-grid purpose-grid" data-option-group="purpose">
+          <button class="active" type="button" data-value="自定义">自定义</button>
+          <button type="button" data-value="角色图">角色图</button>
+          <button type="button" data-value="三视图">三视图</button>
+          <button type="button" data-value="故事板">故事板</button>
+        </div>
+      </div>
+      <div class="option-group full">
+        <span>参考模式</span>
+        <div class="option-grid purpose-grid" data-option-group="referenceMode">
+          <button class="active" type="button" data-value="structureStyle">结构+风格</button>
+          <button type="button" data-value="strict">严格重绘</button>
+          <button type="button" data-value="style">风格参考</button>
+          <button type="button" data-value="creative">创意扩展</button>
+        </div>
+      </div>
+      <div class="option-group full">
+        <span>图片角色</span>
+        <div class="option-grid purpose-grid" data-option-group="imageRole">
+          <button class="active" type="button" data-value="general">普通图片</button>
+          <button type="button" data-value="editBase">编辑底图</button>
+          <button type="button" data-value="structure">渲染结构图</button>
+          <button type="button" data-value="style">风格参考图</button>
+          <button type="button" data-value="output">输出图</button>
+        </div>
+      </div>
+      <div class="option-group full">
+        <span>质量</span>
+        <div class="option-grid quality-grid" data-option-group="quality">
+          <button type="button" data-value="low">low</button>
+          <button type="button" data-value="medium">medium</button>
+          <button class="active" type="button" data-value="high">high</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="reference-picker" id="referencePicker" aria-hidden="true">
+      <div class="reference-picker-head">
+        <div>
+          <strong>添加素材/引用</strong>
+          <span>文本、图片、视频或音频都会作为当前节点的输入素材。</span>
+        </div>
+        <label class="upload-reference-button">
+          上传
+          <input id="addLocalReference" type="file" accept="image/*,video/*,audio/*,.txt,.md" hidden />
+        </label>
+      </div>
+      <div class="reference-list" id="referenceList"></div>
+    </div>
+
+    <div class="image-viewer" id="imageViewer" aria-hidden="true">
+      <div class="image-viewer-toolbar">
+        <button type="button" data-image-zoom="out">－</button>
+        <button type="button" data-image-zoom="reset">100%</button>
+        <button type="button" data-image-zoom="in">＋</button>
+        <button type="button" id="closeImageViewer">关闭</button>
+      </div>
+      <button class="image-viewer-nav prev" type="button" data-image-step="-1">‹</button>
+      <img id="imageViewerImg" alt="图片预览" />
+      <button class="image-viewer-nav next" type="button" data-image-step="1">›</button>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
