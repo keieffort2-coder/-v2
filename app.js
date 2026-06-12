@@ -2196,31 +2196,78 @@ function ensureAuthSignOutButton() {
 }
 
 async function signInWithPassword() {
-  if (!supabaseClient) return;
-  const email = document.querySelector("#authEmail")?.value.trim();
-  const password = document.querySelector("#authPassword")?.value || "";
-  if (!email || !password) return;
-  setAuthStatus("正在登录...");
-  const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
-  if (error) {
-    setAuthStatus(`登录失败：${error.message}`);
+  if (!supabaseClient) {
+    setAuthStatus("登录服务还没初始化，请刷新页面或检查 Supabase 环境变量。");
     return;
   }
-  setAuthStatus("登录成功。");
+  const credentials = getAuthCredentials();
+  if (!credentials) return;
+  setAuthBusy(true);
+  setAuthStatus("正在登录...");
+  try {
+    const { error } = await supabaseClient.auth.signInWithPassword(credentials);
+    if (error) {
+      setAuthStatus(`登录失败：${error.message}`);
+      return;
+    }
+    setAuthStatus("登录成功。");
+  } finally {
+    setAuthBusy(false);
+  }
 }
 
 async function signUpWithPassword() {
-  if (!supabaseClient) return;
-  const email = document.querySelector("#authEmail")?.value.trim();
-  const password = document.querySelector("#authPassword")?.value || "";
-  if (!email || !password) return;
-  setAuthStatus("正在注册...");
-  const { error } = await supabaseClient.auth.signUp({ email, password });
-  if (error) {
-    setAuthStatus(`注册失败：${error.message}`);
+  if (!supabaseClient) {
+    setAuthStatus("注册服务还没初始化，请刷新页面或检查 Supabase 环境变量。");
     return;
   }
-  setAuthStatus("注册成功。如果 Supabase 开启了邮件确认，请先去邮箱确认后再登录。");
+  const credentials = getAuthCredentials();
+  if (!credentials) return;
+  setAuthBusy(true);
+  setAuthStatus("正在注册...");
+  try {
+    const { data, error } = await supabaseClient.auth.signUp(credentials);
+    if (error) {
+      setAuthStatus(`注册失败：${error.message}`);
+      return;
+    }
+    if (data.session) {
+      setAuthStatus("注册成功，已自动登录。");
+      return;
+    }
+    setAuthStatus("注册成功。如果 Supabase 开启了邮件确认，请先去邮箱确认后再登录。");
+  } finally {
+    setAuthBusy(false);
+  }
+}
+
+function getAuthCredentials() {
+  const emailInput = document.querySelector("#authEmail");
+  const passwordInput = document.querySelector("#authPassword");
+  const email = emailInput?.value.trim() || "";
+  const password = passwordInput?.value || "";
+  if (!email) {
+    setAuthStatus("请输入邮箱。");
+    emailInput?.focus();
+    return null;
+  }
+  if (!password) {
+    setAuthStatus("请输入密码。");
+    passwordInput?.focus();
+    return null;
+  }
+  if (password.length < 6) {
+    setAuthStatus("密码至少需要 6 位。");
+    passwordInput?.focus();
+    return null;
+  }
+  return { email, password };
+}
+
+function setAuthBusy(isBusy) {
+  document.querySelectorAll("[data-auth-mode]").forEach((button) => {
+    button.disabled = isBusy;
+  });
 }
 
 function syncAuthUi() {
