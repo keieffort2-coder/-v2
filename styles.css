@@ -32,6 +32,91 @@ button {
   cursor: pointer;
 }
 
+.auth-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(22, 217, 245, 0.13), transparent 36%),
+    rgba(3, 7, 11, 0.96);
+}
+
+.auth-overlay[hidden] {
+  display: none;
+}
+
+.auth-card {
+  display: grid;
+  width: min(440px, 100%);
+  gap: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(11, 16, 24, 0.96);
+  box-shadow: var(--shadow);
+  padding: 24px;
+}
+
+.auth-card h1 {
+  margin: 0;
+  font-size: 32px;
+}
+
+.auth-card p {
+  margin: 0 0 4px;
+  color: #b8c9dc;
+  line-height: 1.6;
+}
+
+.auth-card label {
+  display: grid;
+  gap: 7px;
+}
+
+.auth-card label span,
+.auth-card small {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.auth-card input {
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0a1018;
+  color: var(--text);
+  padding: 0 12px;
+}
+
+.auth-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.auth-signout {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 70;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(10, 17, 26, 0.9);
+  color: #d8e8f8;
+  padding: 0 12px;
+}
+
+.auth-signout[hidden] {
+  display: none;
+}
+
+body.auth-locked {
+  overflow: hidden;
+}
+
 svg {
   width: 17px;
   height: 17px;
