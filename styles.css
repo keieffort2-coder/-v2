@@ -2282,6 +2282,10 @@ svg {
   box-shadow: none;
 }
 
+.empty-assets[hidden] {
+  display: none;
+}
+
 .empty-assets div {
   display: grid;
   width: 50px;
@@ -2333,6 +2337,12 @@ svg {
   color: #b8c9dc;
   line-height: 1.6;
   text-align: center;
+}
+
+.asset-thumb video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .asset-library-grid article {
