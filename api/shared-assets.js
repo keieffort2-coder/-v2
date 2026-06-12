@@ -19,12 +19,13 @@ module.exports = async function handler(req, res) {
 
     if (req.method === "POST") {
       const incoming = Array.isArray(req.body?.assets) ? req.body.assets : [];
-      if (!incoming.length) {
+      const deletedIds = Array.isArray(req.body?.deletedIds) ? req.body.deletedIds.map((id) => String(id).trim()).filter(Boolean) : [];
+      if (!incoming.length && !deletedIds.length) {
         res.status(200).json({ ok: false, skipped: true, message: "Refusing to overwrite shared assets with an empty list." });
         return;
       }
       const current = await readJsonBlob(ASSETS_PATH, { assets: [] });
-      const merged = mergeAssets(Array.isArray(current.assets) ? current.assets : [], incoming);
+      const merged = mergeAssets(Array.isArray(current.assets) ? current.assets : [], incoming, deletedIds);
       await writeJsonBlob(ASSETS_PATH, { assets: merged, updatedAt: new Date().toISOString() });
       res.status(200).json({ ok: true, assets: merged });
       return;
@@ -42,11 +43,12 @@ module.exports = async function handler(req, res) {
   }
 };
 
-function mergeAssets(existing = [], incoming = []) {
+function mergeAssets(existing = [], incoming = [], deletedIds = []) {
   const byId = new Map();
+  const deleted = new Set(deletedIds);
   [...existing, ...incoming].forEach((asset) => {
     const id = String(asset?.id || "").trim();
-    if (!id) return;
+    if (!id || deleted.has(id)) return;
     byId.set(id, {
       ...asset,
       id,
