@@ -28,7 +28,9 @@ module.exports = async function handler(req, res) {
     try {
       const taskPayload = await getTask(apiKey, String(taskId));
       const status = getTaskStatus(taskPayload);
-      const videoUrl = await persistResultVideo(extractResultVideoUrl(taskPayload), taskId);
+      const rawVideoUrl = extractResultVideoUrl(taskPayload);
+      const shouldPersist = String(req.query?.persist || "").toLowerCase() === "true" || req.query?.persist === "1";
+      const videoUrl = shouldPersist ? await persistResultVideo(rawVideoUrl, taskId) : rawVideoUrl;
       res.status(200).json({
         taskId,
         status,
