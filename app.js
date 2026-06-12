@@ -140,6 +140,13 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const assetPreviewButton = event.target.closest("[data-preview-asset]");
+  if (assetPreviewButton) {
+    const asset = getAssetById(assetPreviewButton.dataset.previewAsset);
+    if (asset) openAssetPreview(asset);
+    return;
+  }
+
   const assetDeleteButton = event.target.closest("[data-delete-asset]");
   if (assetDeleteButton) {
     deleteAssetFromLibrary(assetDeleteButton.dataset.deleteAsset);
@@ -504,6 +511,10 @@ imageViewer?.addEventListener(
 );
 
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && document.querySelector("#assetPreviewModal")?.classList.contains("show")) {
+    closeAssetPreview();
+    return;
+  }
   if (!imageViewer?.classList.contains("show")) return;
   if (event.key === "Escape") {
     closeImageViewerPanel();
@@ -1830,6 +1841,7 @@ function renderAssetCard(asset, scope) {
         ${renderAssetPreview(asset, preview)}
       </div>
       <div class="asset-card-actions">
+        <button type="button" data-preview-asset="${escapeHtml(asset.id)}">预览</button>
         <button class="open-canvas" type="button" data-use-asset="${escapeHtml(asset.id)}">上传画布</button>
         ${
           isPlatform
@@ -1876,6 +1888,159 @@ function getAssetVideoPreview(asset) {
     ...arrayOrEmpty(node.referenceVideoUrls),
   ];
   return candidates.find(Boolean) || "";
+}
+
+function openAssetPreview(asset) {
+  const modal = ensureAssetPreviewModal();
+  modal.querySelector(".asset-preview-body").innerHTML = renderAssetPreviewDetails(asset);
+  modal.classList.add("show");
+  modal.setAttribute("aria-hidden", "false");
+}
+
+function ensureAssetPreviewModal() {
+  let modal = document.querySelector("#assetPreviewModal");
+  if (modal) return modal;
+  modal = document.createElement("div");
+  modal.id = "assetPreviewModal";
+  modal.className = "asset-preview-modal";
+  modal.setAttribute("aria-hidden", "true");
+  modal.innerHTML = `
+    <div class="asset-preview-panel" role="dialog" aria-modal="true">
+      <div class="asset-preview-head">
+        <strong>素材预览</strong>
+        <button type="button" data-close-asset-preview>关闭</button>
+      </div>
+      <div class="asset-preview-body"></div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal || event.target.closest("[data-close-asset-preview]")) closeAssetPreview();
+  });
+  return modal;
+}
+
+function closeAssetPreview() {
+  const modal = document.querySelector("#assetPreviewModal");
+  if (!modal) return;
+  modal.classList.remove("show");
+  modal.setAttribute("aria-hidden", "true");
+}
+
+function renderAssetPreviewDetails(asset) {
+  const node = asset.nodeSnapshot || {};
+  const images = getAssetImageSources(asset);
+  const videos = getAssetVideoSources(asset);
+  const params = getAssetNodeParams(node);
+  return `
+    <section class="asset-preview-summary">
+      <div>
+        <small>${escapeHtml(asset.source === "platform" ? "平台素材" : "本地素材")}</small>
+        <h2>${escapeHtml(asset.title || node.title || "未命名素材")}</h2>
+        <p>${escapeHtml(asset.content || node.content || "暂无文本内容。")}</p>
+      </div>
+      <dl>
+        <div><dt>节点类型</dt><dd>${escapeHtml(typeNames[node.type || asset.type] || node.type || asset.type || "未知")}</dd></div>
+        <div><dt>素材编号</dt><dd>${escapeHtml(asset.id || "-")}</dd></div>
+        <div><dt>更新时间</dt><dd>${escapeHtml(formatAssetTime(asset.updatedAt || asset.createdAt))}</dd></div>
+      </dl>
+    </section>
+    ${renderAssetMediaSection("图片", images, "image")}
+    ${renderAssetMediaSection("视频", videos, "video")}
+    <section class="asset-preview-section">
+      <h3>节点参数</h3>
+      <div class="asset-param-grid">
+        ${params.map(([label, value]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("") || "<p>暂无参数。</p>"}
+      </div>
+    </section>
+    <section class="asset-preview-section">
+      <h3>完整节点信息</h3>
+      <pre>${escapeHtml(JSON.stringify(asset.nodeSnapshot || asset, null, 2))}</pre>
+    </section>
+  `;
+}
+
+function getAssetImageSources(asset) {
+  const node = asset.nodeSnapshot;
+  if (!node) return [];
+  const images = [
+    node.generatedImageUrl,
+    ...arrayOrEmpty(node.generatedImageUrls),
+    ...arrayOrEmpty(node.imageUrls),
+    node.imageDataUrl,
+    ...arrayOrEmpty(node.referenceImageUrls),
+    node.referenceImageDataUrl,
+  ];
+  arrayOrEmpty(node.folderNodes).forEach((child) => {
+    images.push(...getAssetImageSources({ nodeSnapshot: child }));
+  });
+  return uniqueValues(images.filter(Boolean));
+}
+
+function getAssetVideoSources(asset) {
+  const node = asset.nodeSnapshot;
+  if (!node) return [];
+  const videos = [
+    node.generatedVideoUrl,
+    ...arrayOrEmpty(node.generatedVideoUrls),
+    ...arrayOrEmpty(node.videoUrls),
+    node.videoDataUrl,
+    node.referenceVideoUrl,
+    ...arrayOrEmpty(node.referenceVideoUrls),
+  ];
+  arrayOrEmpty(node.folderNodes).forEach((child) => {
+    videos.push(...getAssetVideoSources({ nodeSnapshot: child }));
+  });
+  return uniqueValues(videos.filter(Boolean));
+}
+
+function renderAssetMediaSection(title, sources, type) {
+  return `
+    <section class="asset-preview-section">
+      <h3>${escapeHtml(title)}</h3>
+      ${
+        sources.length
+          ? `<div class="asset-preview-media-grid">${sources.map((source) => renderAssetMediaItem(source, type)).join("")}</div>`
+          : "<p>暂无媒体。</p>"
+      }
+    </section>
+  `;
+}
+
+function renderAssetMediaItem(source, type) {
+  if (type === "video") {
+    return `<video src="${escapeHtml(source)}" controls muted playsinline></video>`;
+  }
+  return `<img src="${escapeHtml(source)}" alt="">`;
+}
+
+function getAssetNodeParams(node) {
+  if (!node || !Object.keys(node).length) return [];
+  const rows = [
+    ["标题", node.title],
+    ["内容", node.content],
+    ["图片模型", node.imageModel],
+    ["图片用途", node.imagePurpose],
+    ["参考模式", node.referenceMode],
+    ["图片角色", node.imageRole],
+    ["图片质量", node.imageQuality],
+    ["视频模型", node.videoModel],
+    ["视频模式", node.videoMode],
+    ["时长", node.videoDuration],
+    ["宽高比", node.videoAspectRatio],
+    ["分辨率", node.videoResolution],
+    ["随机种子", node.videoSeed],
+    ["生成音频", node.videoGenerateAudio === true ? "是" : node.videoGenerateAudio === false ? "否" : ""],
+    ["返回尾帧", node.videoReturnLastFrame === true ? "是" : node.videoReturnLastFrame === false ? "否" : ""],
+    ["联网搜索", node.videoWebSearch === true ? "是" : node.videoWebSearch === false ? "否" : ""],
+  ];
+  return rows.filter(([, value]) => value !== undefined && value !== null && String(value) !== "").map(([label, value]) => [label, String(value)]);
+}
+
+function formatAssetTime(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString("zh-CN");
 }
 
 let sharedAssetsSaveTimer = null;
