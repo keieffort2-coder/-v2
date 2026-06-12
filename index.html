@@ -281,31 +281,14 @@
           </section>
 
           <section class="platform-assets">
-            <h2>平台素材</h2>
-            <p>面向游戏宣发生产的通用节点素材。</p>
-            <div class="asset-library-grid">
-              <article>
-                <span class="asset-icon">▰</span>
-                <small>文本素材</small>
-                <h3>游戏镜头语言节点包</h3>
-                <p>包含 Boss 压迫感、角色登场、技能符号、环境揭示等常用镜头指令。</p>
-                <button type="button" data-platform-asset="game-camera-language">+ 加入我的素材</button>
-              </article>
-              <article>
-                <span class="asset-icon">▣</span>
-                <small>文本素材</small>
-                <h3>官方需求解析节点</h3>
-                <p>把厂家 brief 拆成主题、禁用项、素材职责、交付规格和可执行 prompt。</p>
-                <button type="button" data-platform-asset="official-brief-parser">+ 加入我的素材</button>
-              </article>
-              <article>
-                <span class="asset-icon">▧</span>
-                <small>图片素材</small>
-                <h3>高转化风格参考组</h3>
-                <p>面向买量视频的 UI 高光、角色符号、场景冲突和奖励反馈参考。</p>
-                <button type="button" data-platform-asset="high-conversion-style">+ 加入我的素材</button>
-              </article>
+            <h2>&#24179;&#21488;&#32032;&#26448;</h2>
+            <p>&#20174;&#25105;&#30340;&#32032;&#26448;&#21491;&#38190;&#19978;&#20256;&#21518;&#65292;&#20250;&#36827;&#20837;&#25152;&#26377;&#20154;&#21487;&#29992;&#30340;&#24179;&#21488;&#32032;&#26448;&#12290;</p>
+            <div class="empty-assets empty-platform-assets">
+              <div>P</div>
+              <strong>&#26242;&#26080;&#24179;&#21488;&#32032;&#26448;</strong>
+              <span>&#22312;&#25105;&#30340;&#32032;&#26448;&#21345;&#29255;&#19978;&#21491;&#38190;&#65292;&#36873;&#25321;&#19978;&#20256;&#21040;&#24179;&#21488;&#21518;&#20250;&#26174;&#31034;&#22312;&#36825;&#37324;&#12290;</span>
             </div>
+            <div class="platform-assets-list my-assets-list"></div>
           </section>
         </section>
 
@@ -363,6 +346,12 @@
       <button type="button" data-menu-action="save-asset">上传素材库</button>
       <button type="button" data-menu-action="ungroup-folder">取消文件夹</button>
       <button type="button" data-menu-action="delete">删除节点</button>
+    </div>
+
+    <div class="context-menu" id="assetContextMenu" role="menu" aria-hidden="true">
+      <div class="context-title">&#32032;&#26448;&#25805;&#20316;</div>
+      <button type="button" data-asset-action="publish">&#19978;&#20256;&#21040;&#24179;&#21488;</button>
+      <button type="button" data-asset-action="unpublish">&#31227;&#20986;&#24179;&#21488;</button>
     </div>
 
     <div class="context-menu" id="imageUploadContextMenu" role="menu" aria-hidden="true">
