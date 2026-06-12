@@ -56,6 +56,8 @@ const SHARED_PROJECTS_API = "/api/shared-projects";
 const SHARED_ASSETS_API = "/api/shared-assets";
 const SHARED_TEMPLATES_API = "/api/shared-templates";
 const AUTH_CONFIG_API = "/api/auth-config";
+const ACCESS_AUTH_API = "/api/access-auth";
+const ACCESS_ADMIN_API = "/api/access-admin";
 const IMAGE_DB_NAME = "aivideobox.images";
 const IMAGE_STORE_NAME = "images";
 const typeLabels = { text: "Text", image: "Image", video: "Video", folder: "Folder" };
@@ -115,9 +117,7 @@ let platformSharedAssets = [];
 let localTemplates = [];
 let platformSharedTemplates = [];
 let pendingDeletedProjectNames = [];
-let supabaseClient = null;
-let authSession = null;
-let authReady = false;
+let accessSession = null;
 let imageOptions = {
   purpose: "自定义",
   referenceMode: "structureStyle",
@@ -130,7 +130,7 @@ let workspaceSidebarsHidden = localStorage.getItem(WORKSPACE_SIDE_STATE_KEY) ===
 connectorSvg?.setAttribute("viewBox", "0 0 5000 5000");
 ensureMemoryUi();
 applyWorkspaceSidebarsState();
-initSupabaseAuth();
+initAccessAuth();
 
 pageButtons.forEach((button) => {
   button.addEventListener("click", () => showPage(button.dataset.page));
@@ -2115,31 +2115,13 @@ function formatAssetTime(value) {
   return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString("zh-CN");
 }
 
-async function initSupabaseAuth() {
+async function initAccessAuth() {
   createAuthOverlay();
   try {
-    const response = await fetch(AUTH_CONFIG_API, { cache: "no-store" });
-    const config = await readResponseJson(response);
-    if (!config.enabled) {
-      setAuthStatus("登录未启用：请先配置 Supabase 环境变量。");
-      lockAppForAuth(true);
-      return;
-    }
-    if (!window.supabase?.createClient) {
-      setAuthStatus("Supabase SDK 加载失败，请检查网络。");
-      lockAppForAuth(true);
-      return;
-    }
-    supabaseClient = window.supabase.createClient(config.url, config.anonKey);
-    const { data, error } = await supabaseClient.auth.getSession();
-    if (error) throw error;
-    authSession = data.session || null;
-    authReady = true;
+    const response = await fetch(ACCESS_AUTH_API, { cache: "no-store" });
+    const result = await readResponseJson(response);
+    accessSession = result.authenticated ? result.session : null;
     syncAuthUi();
-    supabaseClient.auth.onAuthStateChange((_event, session) => {
-      authSession = session || null;
-      syncAuthUi();
-    });
   } catch (error) {
     setAuthStatus(`登录初始化失败：${error instanceof Error ? error.message : String(error)}`);
     lockAppForAuth(true);
@@ -2153,20 +2135,31 @@ function createAuthOverlay() {
   overlay.className = "auth-overlay";
   overlay.innerHTML = `
     <form class="auth-card" id="authForm">
-      <span class="kicker">ACCOUNT</span>
-      <h1>AIVideoBox 登录</h1>
-      <p>登录后进入工作台、素材库和模板库。</p>
+      <span class="kicker">ACCESS</span>
+      <h1>AIVideoBox 访问口令</h1>
+      <p>输入管理员发放的访问口令后进入工作台、素材库和模板库。</p>
       <label>
-        <span>邮箱</span>
-        <input id="authEmail" type="email" autocomplete="email" required />
-      </label>
-      <label>
-        <span>密码</span>
-        <input id="authPassword" type="password" autocomplete="current-password" required minlength="6" />
+        <span>访问口令</span>
+        <input id="accessCodeInput" type="password" autocomplete="current-password" required />
       </label>
       <div class="auth-actions">
-        <button class="yellow-button" type="submit" data-auth-mode="signin">登录</button>
-        <button class="subtle-button" type="button" data-auth-mode="signup">注册</button>
+        <button class="yellow-button" type="submit" data-auth-mode="signin">进入</button>
+        <button class="subtle-button" type="button" data-auth-admin-toggle>管理员</button>
+      </div>
+      <div class="auth-admin-panel" id="authAdminPanel" hidden>
+        <label>
+          <span>管理员密钥</span>
+          <input id="adminKeyInput" type="password" autocomplete="off" />
+        </label>
+        <label>
+          <span>口令名称</span>
+          <input id="adminCodeName" type="text" placeholder="例如：剪辑师 A" />
+        </label>
+        <div class="auth-actions">
+          <button class="subtle-button" type="button" data-auth-admin-create>生成口令</button>
+          <button class="subtle-button" type="button" data-auth-admin-load>查看列表</button>
+        </div>
+        <div class="auth-admin-result" id="authAdminResult"></div>
       </div>
       <small id="authStatus">正在检查登录状态...</small>
     </form>
@@ -2174,9 +2167,11 @@ function createAuthOverlay() {
   document.body.appendChild(overlay);
   overlay.querySelector("#authForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    await signInWithPassword();
+    await signInWithAccessCode();
   });
-  overlay.querySelector('[data-auth-mode="signup"]')?.addEventListener("click", signUpWithPassword);
+  overlay.querySelector("[data-auth-admin-toggle]")?.addEventListener("click", toggleAdminPanel);
+  overlay.querySelector("[data-auth-admin-create]")?.addEventListener("click", createAccessCodeFromAdmin);
+  overlay.querySelector("[data-auth-admin-load]")?.addEventListener("click", loadAccessCodesFromAdmin);
   ensureAuthSignOutButton();
 }
 
@@ -2189,79 +2184,38 @@ function ensureAuthSignOutButton() {
   button.textContent = "退出登录";
   button.hidden = true;
   button.addEventListener("click", async () => {
-    if (!supabaseClient) return;
-    await supabaseClient.auth.signOut();
+    await fetch(ACCESS_AUTH_API, { method: "DELETE" });
+    accessSession = null;
+    syncAuthUi();
   });
   document.body.appendChild(button);
 }
 
-async function signInWithPassword() {
-  if (!supabaseClient) {
-    setAuthStatus("登录服务还没初始化，请刷新页面或检查 Supabase 环境变量。");
+async function signInWithAccessCode() {
+  const code = document.querySelector("#accessCodeInput")?.value.trim() || "";
+  if (!code) {
+    setAuthStatus("请输入访问口令。");
+    document.querySelector("#accessCodeInput")?.focus();
     return;
   }
-  const credentials = getAuthCredentials();
-  if (!credentials) return;
   setAuthBusy(true);
-  setAuthStatus("正在登录...");
+  setAuthStatus("正在校验口令...");
   try {
-    const { error } = await supabaseClient.auth.signInWithPassword(credentials);
-    if (error) {
-      setAuthStatus(`登录失败：${error.message}`);
+    const response = await fetch(ACCESS_AUTH_API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    });
+    const result = await readResponseJson(response);
+    if (!response.ok) {
+      setAuthStatus(result.error || `登录失败：HTTP ${response.status}`);
       return;
     }
-    setAuthStatus("登录成功。");
+    accessSession = { name: result.user?.name || "访问用户" };
+    syncAuthUi();
   } finally {
     setAuthBusy(false);
   }
-}
-
-async function signUpWithPassword() {
-  if (!supabaseClient) {
-    setAuthStatus("注册服务还没初始化，请刷新页面或检查 Supabase 环境变量。");
-    return;
-  }
-  const credentials = getAuthCredentials();
-  if (!credentials) return;
-  setAuthBusy(true);
-  setAuthStatus("正在注册...");
-  try {
-    const { data, error } = await supabaseClient.auth.signUp(credentials);
-    if (error) {
-      setAuthStatus(`注册失败：${error.message}`);
-      return;
-    }
-    if (data.session) {
-      setAuthStatus("注册成功，已自动登录。");
-      return;
-    }
-    setAuthStatus("注册成功。如果 Supabase 开启了邮件确认，请先去邮箱确认后再登录。");
-  } finally {
-    setAuthBusy(false);
-  }
-}
-
-function getAuthCredentials() {
-  const emailInput = document.querySelector("#authEmail");
-  const passwordInput = document.querySelector("#authPassword");
-  const email = emailInput?.value.trim() || "";
-  const password = passwordInput?.value || "";
-  if (!email) {
-    setAuthStatus("请输入邮箱。");
-    emailInput?.focus();
-    return null;
-  }
-  if (!password) {
-    setAuthStatus("请输入密码。");
-    passwordInput?.focus();
-    return null;
-  }
-  if (password.length < 6) {
-    setAuthStatus("密码至少需要 6 位。");
-    passwordInput?.focus();
-    return null;
-  }
-  return { email, password };
 }
 
 function setAuthBusy(isBusy) {
@@ -2271,10 +2225,10 @@ function setAuthBusy(isBusy) {
 }
 
 function syncAuthUi() {
-  lockAppForAuth(!authSession);
+  lockAppForAuth(!accessSession);
   const signOut = document.querySelector("#authSignOut");
-  if (signOut) signOut.hidden = !authSession;
-  if (authSession?.user?.email) setAuthStatus(`已登录：${authSession.user.email}`);
+  if (signOut) signOut.hidden = !accessSession;
+  if (accessSession?.name) setAuthStatus(`已登录：${accessSession.name}`);
 }
 
 function lockAppForAuth(locked) {
@@ -2286,6 +2240,83 @@ function lockAppForAuth(locked) {
 function setAuthStatus(message) {
   const status = document.querySelector("#authStatus");
   if (status) status.textContent = message;
+}
+
+function toggleAdminPanel() {
+  const panel = document.querySelector("#authAdminPanel");
+  if (panel) panel.hidden = !panel.hidden;
+}
+
+async function createAccessCodeFromAdmin() {
+  const adminKey = document.querySelector("#adminKeyInput")?.value.trim() || "";
+  const name = document.querySelector("#adminCodeName")?.value.trim() || "访问用户";
+  if (!adminKey) {
+    setAuthStatus("请输入管理员密钥。");
+    return;
+  }
+  const result = await callAccessAdmin("POST", adminKey, { name });
+  if (!result) return;
+  document.querySelector("#authAdminResult").innerHTML = `
+    <div class="admin-code-box">
+      <span>新口令只显示一次</span>
+      <strong>${escapeHtml(result.code)}</strong>
+    </div>
+  `;
+}
+
+async function loadAccessCodesFromAdmin() {
+  const adminKey = document.querySelector("#adminKeyInput")?.value.trim() || "";
+  if (!adminKey) {
+    setAuthStatus("请输入管理员密钥。");
+    return;
+  }
+  const result = await callAccessAdmin("GET", adminKey);
+  if (!result) return;
+  renderAccessCodeList(result.codes || [], adminKey);
+}
+
+async function callAccessAdmin(method, adminKey, body = {}) {
+  setAuthStatus("正在请求管理员接口...");
+  const response = await fetch(ACCESS_ADMIN_API, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      "X-Admin-Key": adminKey,
+    },
+    body: method === "GET" ? undefined : JSON.stringify(body),
+  });
+  const result = await readResponseJson(response);
+  if (!response.ok || result.disabled) {
+    setAuthStatus(result.error || `管理员接口失败：HTTP ${response.status}`);
+    return null;
+  }
+  setAuthStatus("管理员操作完成。");
+  return result;
+}
+
+function renderAccessCodeList(codes, adminKey) {
+  const target = document.querySelector("#authAdminResult");
+  if (!target) return;
+  target.innerHTML = codes.length
+    ? codes.map((item) => `
+        <div class="admin-code-row">
+          <div>
+            <strong>${escapeHtml(item.name)}</strong>
+            <span>${escapeHtml(item.active ? "启用" : "停用")} / ${escapeHtml(formatAssetTime(item.createdAt))}</span>
+          </div>
+          <button type="button" data-toggle-code="${escapeHtml(item.id)}" data-next-active="${item.active ? "false" : "true"}">${item.active ? "停用" : "启用"}</button>
+        </div>
+      `).join("")
+    : "<p>暂无口令。</p>";
+  target.querySelectorAll("[data-toggle-code]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const result = await callAccessAdmin("PATCH", adminKey, {
+        id: button.dataset.toggleCode,
+        active: button.dataset.nextActive === "true",
+      });
+      if (result?.codes) renderAccessCodeList(result.codes, adminKey);
+    });
+  });
 }
 
 function loadTemplates() {
