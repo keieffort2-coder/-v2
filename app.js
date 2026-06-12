@@ -55,6 +55,7 @@ const TEMPLATE_LIBRARY_KEY = "aivideobox.templates.v1";
 const SHARED_PROJECTS_API = "/api/shared-projects";
 const SHARED_ASSETS_API = "/api/shared-assets";
 const SHARED_TEMPLATES_API = "/api/shared-templates";
+const AUTH_CONFIG_API = "/api/auth-config";
 const IMAGE_DB_NAME = "aivideobox.images";
 const IMAGE_STORE_NAME = "images";
 const typeLabels = { text: "Text", image: "Image", video: "Video", folder: "Folder" };
@@ -114,6 +115,9 @@ let platformSharedAssets = [];
 let localTemplates = [];
 let platformSharedTemplates = [];
 let pendingDeletedProjectNames = [];
+let supabaseClient = null;
+let authSession = null;
+let authReady = false;
 let imageOptions = {
   purpose: "自定义",
   referenceMode: "structureStyle",
@@ -126,6 +130,7 @@ let workspaceSidebarsHidden = localStorage.getItem(WORKSPACE_SIDE_STATE_KEY) ===
 connectorSvg?.setAttribute("viewBox", "0 0 5000 5000");
 ensureMemoryUi();
 applyWorkspaceSidebarsState();
+initSupabaseAuth();
 
 pageButtons.forEach((button) => {
   button.addEventListener("click", () => showPage(button.dataset.page));
@@ -2108,6 +2113,132 @@ function formatAssetTime(value) {
   if (!value) return "-";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString("zh-CN");
+}
+
+async function initSupabaseAuth() {
+  createAuthOverlay();
+  try {
+    const response = await fetch(AUTH_CONFIG_API, { cache: "no-store" });
+    const config = await readResponseJson(response);
+    if (!config.enabled) {
+      setAuthStatus("登录未启用：请先配置 Supabase 环境变量。");
+      lockAppForAuth(true);
+      return;
+    }
+    if (!window.supabase?.createClient) {
+      setAuthStatus("Supabase SDK 加载失败，请检查网络。");
+      lockAppForAuth(true);
+      return;
+    }
+    supabaseClient = window.supabase.createClient(config.url, config.anonKey);
+    const { data, error } = await supabaseClient.auth.getSession();
+    if (error) throw error;
+    authSession = data.session || null;
+    authReady = true;
+    syncAuthUi();
+    supabaseClient.auth.onAuthStateChange((_event, session) => {
+      authSession = session || null;
+      syncAuthUi();
+    });
+  } catch (error) {
+    setAuthStatus(`登录初始化失败：${error instanceof Error ? error.message : String(error)}`);
+    lockAppForAuth(true);
+  }
+}
+
+function createAuthOverlay() {
+  if (document.querySelector("#authOverlay")) return;
+  const overlay = document.createElement("div");
+  overlay.id = "authOverlay";
+  overlay.className = "auth-overlay";
+  overlay.innerHTML = `
+    <form class="auth-card" id="authForm">
+      <span class="kicker">ACCOUNT</span>
+      <h1>AIVideoBox 登录</h1>
+      <p>登录后进入工作台、素材库和模板库。</p>
+      <label>
+        <span>邮箱</span>
+        <input id="authEmail" type="email" autocomplete="email" required />
+      </label>
+      <label>
+        <span>密码</span>
+        <input id="authPassword" type="password" autocomplete="current-password" required minlength="6" />
+      </label>
+      <div class="auth-actions">
+        <button class="yellow-button" type="submit" data-auth-mode="signin">登录</button>
+        <button class="subtle-button" type="button" data-auth-mode="signup">注册</button>
+      </div>
+      <small id="authStatus">正在检查登录状态...</small>
+    </form>
+  `;
+  document.body.appendChild(overlay);
+  overlay.querySelector("#authForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    await signInWithPassword();
+  });
+  overlay.querySelector('[data-auth-mode="signup"]')?.addEventListener("click", signUpWithPassword);
+  ensureAuthSignOutButton();
+}
+
+function ensureAuthSignOutButton() {
+  if (document.querySelector("#authSignOut")) return;
+  const button = document.createElement("button");
+  button.id = "authSignOut";
+  button.className = "auth-signout";
+  button.type = "button";
+  button.textContent = "退出登录";
+  button.hidden = true;
+  button.addEventListener("click", async () => {
+    if (!supabaseClient) return;
+    await supabaseClient.auth.signOut();
+  });
+  document.body.appendChild(button);
+}
+
+async function signInWithPassword() {
+  if (!supabaseClient) return;
+  const email = document.querySelector("#authEmail")?.value.trim();
+  const password = document.querySelector("#authPassword")?.value || "";
+  if (!email || !password) return;
+  setAuthStatus("正在登录...");
+  const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+  if (error) {
+    setAuthStatus(`登录失败：${error.message}`);
+    return;
+  }
+  setAuthStatus("登录成功。");
+}
+
+async function signUpWithPassword() {
+  if (!supabaseClient) return;
+  const email = document.querySelector("#authEmail")?.value.trim();
+  const password = document.querySelector("#authPassword")?.value || "";
+  if (!email || !password) return;
+  setAuthStatus("正在注册...");
+  const { error } = await supabaseClient.auth.signUp({ email, password });
+  if (error) {
+    setAuthStatus(`注册失败：${error.message}`);
+    return;
+  }
+  setAuthStatus("注册成功。如果 Supabase 开启了邮件确认，请先去邮箱确认后再登录。");
+}
+
+function syncAuthUi() {
+  lockAppForAuth(!authSession);
+  const signOut = document.querySelector("#authSignOut");
+  if (signOut) signOut.hidden = !authSession;
+  if (authSession?.user?.email) setAuthStatus(`已登录：${authSession.user.email}`);
+}
+
+function lockAppForAuth(locked) {
+  document.body.classList.toggle("auth-locked", locked);
+  const overlay = document.querySelector("#authOverlay");
+  if (overlay) overlay.hidden = !locked;
+}
+
+function setAuthStatus(message) {
+  const status = document.querySelector("#authStatus");
+  if (status) status.textContent = message;
 }
 
 function loadTemplates() {
