@@ -15,6 +15,7 @@ const connectorSvg = document.querySelector(".connectors");
 const nodeTemplate = document.querySelector("#nodeTemplate");
 const canvasContextMenu = document.querySelector("#canvasContextMenu");
 const nodeContextMenu = document.querySelector("#nodeContextMenu");
+const assetContextMenu = document.querySelector("#assetContextMenu");
 const imageUploadContextMenu = document.querySelector("#imageUploadContextMenu");
 const portConnectionContextMenu = document.querySelector("#portConnectionContextMenu");
 const imageConfigPanel = document.querySelector("#imageConfigPanel");
@@ -49,6 +50,7 @@ const PROJECT_CODE_INDEX_KEY = "aivideobox.projectCodes.v1";
 const GLOBAL_MEMORY_KEY = "aivideobox.globalMemories.v1";
 const IMAGE_OPTIONS_KEY = "aivideobox.imageOptions.v1";
 const WORKSPACE_SIDE_STATE_KEY = "aivideobox.workspaceSidebarsHidden.v1";
+const LOCAL_ASSETS_KEY = "aivideobox.localAssets.v1";
 const SHARED_PROJECTS_API = "/api/shared-projects";
 const SHARED_ASSETS_API = "/api/shared-assets";
 const IMAGE_DB_NAME = "aivideobox.images";
@@ -74,26 +76,6 @@ const videoModelLabels = {
 };
 const videoAspectRatios = ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"];
 const videoResolutions = ["480p", "720p", "1080p"];
-const platformAssets = [
-  {
-    id: "platform-game-camera-language",
-    type: "text",
-    title: "游戏镜头语言节点包",
-    content: "包含 Boss 压迫感、角色登场、技能符号、环境揭示等常用镜头指令。",
-  },
-  {
-    id: "platform-official-brief-parser",
-    type: "text",
-    title: "官方需求解析节点",
-    content: "把厂家 brief 拆成主题、禁用项、素材职责、交付规格和可执行 prompt。",
-  },
-  {
-    id: "platform-high-conversion-style",
-    type: "image",
-    title: "高转化风格参考组",
-    content: "面向买量视频的 UI 高光、角色符号、场景冲突和奖励反馈参考。",
-  },
-];
 const nodeDefaults = {
   text: "输入对话内容、brief 或 prompt。",
   image: "",
@@ -113,6 +95,7 @@ let selectionBoxState = null;
 let wireState = null;
 let contextPoint = { x: 120, y: 120 };
 let contextNode = null;
+let contextAssetId = "";
 let contextUploadNode = null;
 let contextPort = null;
 let configNode = null;
@@ -123,6 +106,8 @@ let canvasDragDepth = 0;
 const imageGenerationControllers = new Map();
 const selectedNodes = new Set();
 let conversationMemories = [];
+let localAssets = [];
+let platformSharedAssets = [];
 let pendingDeletedProjectNames = [];
 let imageOptions = {
   purpose: "自定义",
@@ -142,32 +127,37 @@ pageButtons.forEach((button) => {
 });
 
 document.addEventListener("click", (event) => {
-  const platformAssetButton = event.target.closest("[data-platform-asset]");
-  if (platformAssetButton) {
-    addPlatformAssetToLibrary(platformAssetButton.dataset.platformAsset);
-    return;
-  }
-
   const assetUseButton = event.target.closest("[data-use-asset]");
   if (assetUseButton) {
-    const memory = getMemoryById(assetUseButton.dataset.useAsset);
-    if (memory) {
+    const asset = getAssetById(assetUseButton.dataset.useAsset);
+    if (asset) {
       if (!currentProject) {
         const name = createFreshProject("素材画布");
         openProject(name);
       }
-      createNodeFromMemory(memory);
+      createNodeFromMemory(asset);
     }
     return;
   }
 
   const assetDeleteButton = event.target.closest("[data-delete-asset]");
   if (assetDeleteButton) {
-    pendingDeletedAssetIds.add(assetDeleteButton.dataset.deleteAsset);
-    conversationMemories = conversationMemories.filter((memory) => memory.id !== assetDeleteButton.dataset.deleteAsset);
+    deleteAssetFromLibrary(assetDeleteButton.dataset.deleteAsset);
+    return;
+  }
+
+  const publishAssetButton = event.target.closest("[data-publish-asset]");
+  if (publishAssetButton) {
+    publishLocalAssetToPlatform(publishAssetButton.dataset.publishAsset);
+    return;
+  }
+
+  const unpublishAssetButton = event.target.closest("[data-unpublish-asset]");
+  if (unpublishAssetButton) {
+    pendingDeletedAssetIds.add(unpublishAssetButton.dataset.unpublishAsset);
+    platformSharedAssets = platformSharedAssets.filter((asset) => asset.id !== unpublishAssetButton.dataset.unpublishAsset);
     renderConversationMemories();
     renderAssetsPage();
-    saveGlobalMemories();
     saveSharedAssetsSoon();
     return;
   }
@@ -176,6 +166,15 @@ document.addEventListener("click", (event) => {
   if (!pageButton) return;
   event.preventDefault();
   showPage(pageButton.dataset.page);
+});
+
+document.addEventListener("contextmenu", (event) => {
+  const assetCard = event.target.closest("[data-asset-card]");
+  if (!assetCard || !assetContextMenu) return;
+  event.preventDefault();
+  contextAssetId = assetCard.dataset.assetCard || "";
+  syncAssetContextMenu(getAssetById(contextAssetId));
+  showMenu(assetContextMenu, event.clientX, event.clientY);
 });
 
 createProjectButton?.addEventListener("click", () => {
@@ -404,6 +403,24 @@ portConnectionContextMenu?.addEventListener("click", (event) => {
     updateConnections();
     saveCurrentProject();
     refreshConnectionsSoon();
+  }
+  hideMenus();
+});
+
+assetContextMenu?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-asset-action]");
+  if (!button || !contextAssetId) return;
+  event.preventDefault();
+  event.stopPropagation();
+
+  if (button.dataset.assetAction === "publish") {
+    publishLocalAssetToPlatform(contextAssetId);
+  }
+  if (button.dataset.assetAction === "unpublish") {
+    pendingDeletedAssetIds.add(contextAssetId);
+    platformSharedAssets = platformSharedAssets.filter((asset) => asset.id !== contextAssetId);
+    renderAssetsPage();
+    saveSharedAssetsSoon();
   }
   hideMenus();
 });
@@ -1622,14 +1639,42 @@ function saveNodesToAssetLibrary(nodes) {
   const validNodes = nodes.filter((node) => node?.isConnected);
   if (!validNodes.length) return;
   const assets = validNodes.map((node) => createMemoryFromNode(node));
-  conversationMemories = uniqueMemories([...assets, ...conversationMemories]);
+  localAssets = uniqueMemories([...assets, ...localAssets]);
   renderConversationMemories();
   renderAssetsPage();
   saveGlobalMemories();
-  saveSharedAssetsSoon();
   validNodes.forEach((node) => {
     ensureNodeStatus(node).textContent = validNodes.length > 1 ? "已批量上传到素材库。" : "已上传到素材库。";
   });
+}
+
+function publishLocalAssetToPlatform(id) {
+  const asset = localAssets.find((item) => item.id === id);
+  if (!asset) return;
+  const sharedAsset = {
+    ...asset,
+    source: "platform",
+    updatedAt: new Date().toISOString(),
+  };
+  platformSharedAssets = uniqueMemories([sharedAsset, ...platformSharedAssets]);
+  renderAssetsPage();
+  saveSharedAssetsSoon();
+}
+
+function deleteAssetFromLibrary(id) {
+  localAssets = localAssets.filter((asset) => asset.id !== id);
+  conversationMemories = conversationMemories.filter((memory) => memory.id !== id);
+  renderConversationMemories();
+  renderAssetsPage();
+  saveGlobalMemories();
+}
+
+function syncAssetContextMenu(asset) {
+  const publishButton = assetContextMenu?.querySelector('[data-asset-action="publish"]');
+  const unpublishButton = assetContextMenu?.querySelector('[data-asset-action="unpublish"]');
+  const isPlatform = platformSharedAssets.some((item) => item.id === asset?.id);
+  if (publishButton) publishButton.hidden = !asset || isPlatform || !localAssets.some((item) => item.id === asset.id);
+  if (unpublishButton) unpublishButton.hidden = !asset || !isPlatform;
 }
 
 function stripMediaFromNodeSnapshot(snapshot) {
@@ -1715,14 +1760,21 @@ function getMemoryById(id) {
   return conversationMemories.find((memory) => memory.id === id) || getDefaultMemories().find((memory) => memory.id === id) || null;
 }
 
+function getAssetById(id) {
+  return localAssets.find((asset) => asset.id === id) || platformSharedAssets.find((asset) => asset.id === id) || getMemoryById(id);
+}
+
 function loadGlobalMemories() {
   const saved = readJson(GLOBAL_MEMORY_KEY, []);
   conversationMemories = Array.isArray(saved) ? saved : [];
+  const savedAssets = readJson(LOCAL_ASSETS_KEY, null);
+  localAssets = Array.isArray(savedAssets) ? savedAssets : conversationMemories.filter((asset) => asset?.assetKind === "node");
 }
 
 function saveGlobalMemories() {
   try {
     localStorage.setItem(GLOBAL_MEMORY_KEY, JSON.stringify(conversationMemories));
+    localStorage.setItem(LOCAL_ASSETS_KEY, JSON.stringify(localAssets));
   } catch (error) {
     console.error("Global memory save failed", error);
   }
@@ -1738,41 +1790,72 @@ function renderAssetsPage() {
     section.appendChild(list);
   }
   const empty = section.querySelector(".empty-assets");
-  empty?.toggleAttribute("hidden", conversationMemories.length > 0);
-  list.innerHTML = conversationMemories
-    .map((asset) => {
-      const typeLabel = asset.nodeSnapshot ? "节点配置" : typeNames[asset.type] || "文本";
-      const preview = getAssetPreview(asset);
-      return `
-        <article class="asset-card project-card">
-          <div class="project-row">
-            <div class="folder-icon"><svg viewBox="0 0 24 24"><path d="M4 7h16v12H4z" /><path d="M7 7V5h10v2" /></svg></div>
-            <div>
-              <strong>${escapeHtml(asset.title || "未命名素材")}</strong>
-              <span>${escapeHtml(typeLabel)}</span>
-              <small>${escapeHtml(getAssetMeta(asset))}</small>
-            </div>
-          </div>
-          <div class="project-thumb asset-thumb ${preview ? "has-image" : ""}">
-            ${preview ? `<img src="${escapeHtml(preview)}" alt="">` : `<span>${escapeHtml(asset.content || asset.nodeSnapshot?.content || "已保存的画布节点素材。")}</span>`}
-          </div>
-          <div class="asset-card-actions">
-            <button class="open-canvas" type="button" data-use-asset="${escapeHtml(asset.id)}">上传画布</button>
-            <button class="delete-project" type="button" data-delete-asset="${escapeHtml(asset.id)}">删除</button>
-          </div>
-        </article>
-      `;
-    })
-    .join("");
+  empty?.toggleAttribute("hidden", localAssets.length > 0);
+  list.innerHTML = localAssets.map((asset) => renderAssetCard(asset, "local")).join("");
+
+  const platformSection = document.querySelector(".platform-assets");
+  if (!platformSection) return;
+  let platformList = platformSection.querySelector(".platform-assets-list");
+  if (!platformList) {
+    platformList = document.createElement("div");
+    platformList.className = "platform-assets-list my-assets-list";
+    platformSection.appendChild(platformList);
+  }
+  let platformEmpty = platformSection.querySelector(".empty-platform-assets");
+  if (!platformEmpty) {
+    platformEmpty = document.createElement("div");
+    platformEmpty.className = "empty-assets empty-platform-assets";
+    platformEmpty.innerHTML = "<div>P</div><strong>暂无平台素材</strong><span>在我的素材卡片上右键，选择上传到平台后会显示在这里。</span>";
+    platformSection.insertBefore(platformEmpty, platformList);
+  }
+  platformEmpty.toggleAttribute("hidden", platformSharedAssets.length > 0);
+  platformList.innerHTML = platformSharedAssets.map((asset) => renderAssetCard(asset, "platform")).join("");
 }
 
-function getAssetMeta(asset) {
+function renderAssetCard(asset, scope) {
+  const typeLabel = asset.nodeSnapshot ? "节点配置" : typeNames[asset.type] || "文本";
+  const preview = getAssetPreview(asset);
+  const isPlatform = scope === "platform";
+  return `
+    <article class="asset-card project-card" data-asset-card="${escapeHtml(asset.id)}" data-asset-scope="${escapeHtml(scope)}">
+      <div class="project-row">
+        <div class="folder-icon"><svg viewBox="0 0 24 24"><path d="M4 7h16v12H4z" /><path d="M7 7V5h10v2" /></svg></div>
+        <div>
+          <strong>${escapeHtml(asset.title || "未命名素材")}</strong>
+          <span>${escapeHtml(typeLabel)}</span>
+          <small>${escapeHtml(getAssetMeta(asset, scope))}</small>
+        </div>
+      </div>
+      <div class="project-thumb asset-thumb ${preview ? "has-image" : ""}">
+        ${renderAssetPreview(asset, preview)}
+      </div>
+      <div class="asset-card-actions">
+        <button class="open-canvas" type="button" data-use-asset="${escapeHtml(asset.id)}">上传画布</button>
+        ${
+          isPlatform
+            ? `<button class="delete-project" type="button" data-unpublish-asset="${escapeHtml(asset.id)}">移出平台</button>`
+            : `<button class="delete-project" type="button" data-delete-asset="${escapeHtml(asset.id)}">删除</button>`
+        }
+      </div>
+    </article>
+  `;
+}
+
+function renderAssetPreview(asset, preview) {
+  if (preview) return `<img src="${escapeHtml(preview)}" alt="">`;
+  const video = getAssetVideoPreview(asset);
+  if (video) return `<video src="${escapeHtml(video)}" muted controls playsinline></video>`;
+  return `<span>${escapeHtml(asset.content || asset.nodeSnapshot?.content || "已保存的画布节点素材。")}</span>`;
+}
+
+function getAssetMeta(asset, scope = "local") {
   if (asset.nodeSnapshot) {
     const snapshot = asset.nodeSnapshot;
     const childCount = Array.isArray(snapshot.folderNodes) ? snapshot.folderNodes.length : 0;
-    return childCount ? `完整节点 / 子节点 ${childCount}` : "完整节点";
+    const base = childCount ? `完整节点 / 子节点 ${childCount}` : "完整节点";
+    return scope === "platform" ? `平台素材 / ${base}` : `本地素材 / ${base}`;
   }
-  return asset.source === "platform" ? "平台素材" : "通用素材";
+  return scope === "platform" ? "平台素材" : "本地素材";
 }
 
 function getAssetPreview(asset) {
@@ -1781,21 +1864,18 @@ function getAssetPreview(asset) {
   return candidates.find(isRemoteImageUrl) || candidates.find((value) => typeof value === "string" && value.startsWith("data:image/")) || "";
 }
 
-function addPlatformAssetToLibrary(id) {
-  const asset = platformAssets.find((item) => item.id === `platform-${id}` || item.id === id);
-  if (!asset) return;
-  const memory = {
-    ...asset,
-    id: `asset-${asset.id}`,
-    source: "platform",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-  conversationMemories = uniqueMemories([memory, ...conversationMemories]);
-  renderConversationMemories();
-  renderAssetsPage();
-  saveGlobalMemories();
-  saveSharedAssetsSoon();
+function getAssetVideoPreview(asset) {
+  const node = asset.nodeSnapshot;
+  if (!node) return "";
+  const candidates = [
+    node.generatedVideoUrl,
+    ...arrayOrEmpty(node.generatedVideoUrls),
+    ...arrayOrEmpty(node.videoUrls),
+    node.videoDataUrl,
+    node.referenceVideoUrl,
+    ...arrayOrEmpty(node.referenceVideoUrls),
+  ];
+  return candidates.find(Boolean) || "";
 }
 
 let sharedAssetsSaveTimer = null;
@@ -1811,38 +1891,27 @@ async function loadSharedAssets() {
     const response = await fetch(SHARED_ASSETS_API, { cache: "no-store" });
     const result = await readResponseJson(response);
     if (!response.ok || result.disabled || !Array.isArray(result.assets)) return;
-    if (!result.assets.length && conversationMemories.length) {
-      saveSharedAssetsSoon();
-      return;
-    }
     const remoteAssets = result.assets.filter((asset) => !pendingDeletedAssetIds.has(asset?.id));
-    const merged = uniqueMemories([...remoteAssets, ...conversationMemories]);
-    if (merged.length !== conversationMemories.length) {
-      conversationMemories = merged;
-      saveGlobalMemories();
-      renderConversationMemories();
-      renderAssetsPage();
-    }
+    platformSharedAssets = uniqueMemories(remoteAssets);
+    renderAssetsPage();
   } catch (error) {
     console.warn("Shared assets load failed", error);
   }
 }
 
 async function saveSharedAssets() {
-  if (!conversationMemories.length && !pendingDeletedAssetIds.size) return;
+  if (!platformSharedAssets.length && !pendingDeletedAssetIds.size) return;
   try {
     const response = await fetch(SHARED_ASSETS_API, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ assets: conversationMemories, deletedIds: [...pendingDeletedAssetIds] }),
+      body: JSON.stringify({ assets: platformSharedAssets, deletedIds: [...pendingDeletedAssetIds] }),
     });
     const result = await readResponseJson(response);
     if (!response.ok || result.disabled) return;
     pendingDeletedAssetIds.clear();
     if (Array.isArray(result.assets)) {
-      conversationMemories = uniqueMemories(result.assets);
-      saveGlobalMemories();
-      renderConversationMemories();
+      platformSharedAssets = uniqueMemories(result.assets);
       renderAssetsPage();
     }
   } catch (error) {
@@ -4681,12 +4750,15 @@ function showMenu(menu, x, y) {
 function hideMenus() {
   canvasContextMenu.classList.remove("show");
   nodeContextMenu.classList.remove("show");
+  assetContextMenu?.classList.remove("show");
   imageUploadContextMenu?.classList.remove("show");
   portConnectionContextMenu?.classList.remove("show");
   canvasContextMenu.setAttribute("aria-hidden", "true");
   nodeContextMenu.setAttribute("aria-hidden", "true");
+  assetContextMenu?.setAttribute("aria-hidden", "true");
   imageUploadContextMenu?.setAttribute("aria-hidden", "true");
   portConnectionContextMenu?.setAttribute("aria-hidden", "true");
+  contextAssetId = "";
   contextUploadNode = null;
   contextPort = null;
 }
