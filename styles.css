@@ -2307,35 +2307,11 @@ svg {
 }
 
 .asset-card {
-  display: grid;
-  gap: 10px;
-  min-height: 190px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: rgba(12, 18, 28, 0.82);
-  padding: 18px;
-}
-
-.asset-card small {
-  width: fit-content;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  color: #bfd1e3;
-  padding: 4px 8px;
-}
-
-.asset-card h3 {
-  margin: 0;
-}
-
-.asset-card p {
-  margin: 0;
-  color: #c7d8ea;
-  line-height: 1.6;
+  min-height: 290px;
 }
 
 .asset-card-actions {
-  display: flex;
+  display: grid;
   gap: 8px;
   align-self: end;
 }
@@ -2349,9 +2325,14 @@ svg {
   padding: 0 12px;
 }
 
-.asset-card-actions button.danger {
-  border-color: rgba(255, 89, 134, 0.42);
-  color: #ffb7cc;
+.asset-thumb span {
+  display: grid;
+  height: 100%;
+  place-items: center;
+  padding: 14px;
+  color: #b8c9dc;
+  line-height: 1.6;
+  text-align: center;
 }
 
 .asset-library-grid article {
