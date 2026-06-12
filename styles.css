@@ -2300,6 +2300,60 @@ svg {
   line-height: 1.6;
 }
 
+.my-assets-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.asset-card {
+  display: grid;
+  gap: 10px;
+  min-height: 190px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(12, 18, 28, 0.82);
+  padding: 18px;
+}
+
+.asset-card small {
+  width: fit-content;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: #bfd1e3;
+  padding: 4px 8px;
+}
+
+.asset-card h3 {
+  margin: 0;
+}
+
+.asset-card p {
+  margin: 0;
+  color: #c7d8ea;
+  line-height: 1.6;
+}
+
+.asset-card-actions {
+  display: flex;
+  gap: 8px;
+  align-self: end;
+}
+
+.asset-card-actions button {
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0b111a;
+  color: #d8e8f8;
+  padding: 0 12px;
+}
+
+.asset-card-actions button.danger {
+  border-color: rgba(255, 89, 134, 0.42);
+  color: #ffb7cc;
+}
+
 .asset-library-grid article {
   min-height: 260px;
   padding: 20px;
