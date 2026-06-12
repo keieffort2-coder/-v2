@@ -2314,6 +2314,14 @@ svg {
   min-height: 290px;
 }
 
+.template-card {
+  min-height: 310px;
+}
+
+.template-section {
+  max-width: 1340px;
+}
+
 .asset-card-actions {
   display: grid;
   gap: 8px;
