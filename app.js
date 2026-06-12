@@ -1,4 +1,4 @@
-﻿const pages = document.querySelectorAll(".page");
+const pages = document.querySelectorAll(".page");
 const appShell = document.querySelector(".app-shell");
 const navItems = document.querySelectorAll(".nav-item[data-page]");
 const pageButtons = document.querySelectorAll("[data-page]");
@@ -50,6 +50,7 @@ const GLOBAL_MEMORY_KEY = "aivideobox.globalMemories.v1";
 const IMAGE_OPTIONS_KEY = "aivideobox.imageOptions.v1";
 const WORKSPACE_SIDE_STATE_KEY = "aivideobox.workspaceSidebarsHidden.v1";
 const SHARED_PROJECTS_API = "/api/shared-projects";
+const SHARED_ASSETS_API = "/api/shared-assets";
 const IMAGE_DB_NAME = "aivideobox.images";
 const IMAGE_STORE_NAME = "images";
 const typeLabels = { text: "Text", image: "Image", video: "Video", folder: "Folder" };
@@ -73,6 +74,26 @@ const videoModelLabels = {
 };
 const videoAspectRatios = ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"];
 const videoResolutions = ["480p", "720p", "1080p"];
+const platformAssets = [
+  {
+    id: "platform-game-camera-language",
+    type: "text",
+    title: "游戏镜头语言节点包",
+    content: "包含 Boss 压迫感、角色登场、技能符号、环境揭示等常用镜头指令。",
+  },
+  {
+    id: "platform-official-brief-parser",
+    type: "text",
+    title: "官方需求解析节点",
+    content: "把厂家 brief 拆成主题、禁用项、素材职责、交付规格和可执行 prompt。",
+  },
+  {
+    id: "platform-high-conversion-style",
+    type: "image",
+    title: "高转化风格参考组",
+    content: "面向买量视频的 UI 高光、角色符号、场景冲突和奖励反馈参考。",
+  },
+];
 const nodeDefaults = {
   text: "输入对话内容、brief 或 prompt。",
   image: "",
@@ -121,6 +142,35 @@ pageButtons.forEach((button) => {
 });
 
 document.addEventListener("click", (event) => {
+  const platformAssetButton = event.target.closest("[data-platform-asset]");
+  if (platformAssetButton) {
+    addPlatformAssetToLibrary(platformAssetButton.dataset.platformAsset);
+    return;
+  }
+
+  const assetUseButton = event.target.closest("[data-use-asset]");
+  if (assetUseButton) {
+    const memory = getMemoryById(assetUseButton.dataset.useAsset);
+    if (memory) {
+      if (!currentProject) {
+        const name = createFreshProject("素材画布");
+        openProject(name);
+      }
+      createNodeFromMemory(memory);
+    }
+    return;
+  }
+
+  const assetDeleteButton = event.target.closest("[data-delete-asset]");
+  if (assetDeleteButton) {
+    conversationMemories = conversationMemories.filter((memory) => memory.id !== assetDeleteButton.dataset.deleteAsset);
+    renderConversationMemories();
+    renderAssetsPage();
+    saveGlobalMemories();
+    saveSharedAssetsSoon();
+    return;
+  }
+
   const pageButton = event.target.closest("[data-page]");
   if (!pageButton) return;
   event.preventDefault();
@@ -187,12 +237,15 @@ document.addEventListener("submit", (event) => {
         title: createMemoryTitle(content),
         content,
         createdAt: new Date().toISOString(),
-      };
+  };
   if (!memory.content && !memory.nodeSnapshot) return;
   conversationMemories.unshift(memory);
+  conversationMemories = uniqueMemories(conversationMemories);
   memoryInput.value = "";
   renderConversationMemories();
+  renderAssetsPage();
   saveGlobalMemories();
+  saveSharedAssetsSoon();
 });
 
 document.addEventListener("click", (event) => {
@@ -202,7 +255,9 @@ document.addEventListener("click", (event) => {
     event.stopPropagation();
     conversationMemories = conversationMemories.filter((memory) => memory.id !== deleteButton.dataset.memoryId);
     renderConversationMemories();
+    renderAssetsPage();
     saveGlobalMemories();
+    saveSharedAssetsSoon();
     return;
   }
 
@@ -960,6 +1015,10 @@ function showPage(name) {
   navItems.forEach((item) => item.classList.toggle("active", item.dataset.page === name));
   applyWorkspaceSidebarsState();
   if (name === "projects") loadSharedProjectList();
+  if (name === "assets") {
+    loadSharedAssets();
+    renderAssetsPage();
+  }
 }
 
 function upsertProject(name) {
@@ -1634,6 +1693,101 @@ function saveGlobalMemories() {
     localStorage.setItem(GLOBAL_MEMORY_KEY, JSON.stringify(conversationMemories));
   } catch (error) {
     console.error("Global memory save failed", error);
+  }
+}
+
+function renderAssetsPage() {
+  const section = document.querySelector(".my-assets");
+  if (!section) return;
+  let list = section.querySelector(".my-assets-list");
+  if (!list) {
+    list = document.createElement("div");
+    list.className = "my-assets-list";
+    section.appendChild(list);
+  }
+  const empty = section.querySelector(".empty-assets");
+  empty?.toggleAttribute("hidden", conversationMemories.length > 0);
+  list.innerHTML = conversationMemories
+    .map((asset) => {
+      const typeLabel = asset.nodeSnapshot ? "节点配置" : typeNames[asset.type] || "文本";
+      return `
+        <article class="asset-card">
+          <small>${escapeHtml(typeLabel)}</small>
+          <h3>${escapeHtml(asset.title || "未命名素材")}</h3>
+          <p>${escapeHtml(asset.content || asset.nodeSnapshot?.content || "已保存的画布节点素材。")}</p>
+          <div class="asset-card-actions">
+            <button type="button" data-use-asset="${escapeHtml(asset.id)}">放入画布</button>
+            <button type="button" class="danger" data-delete-asset="${escapeHtml(asset.id)}">删除</button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function addPlatformAssetToLibrary(id) {
+  const asset = platformAssets.find((item) => item.id === `platform-${id}` || item.id === id);
+  if (!asset) return;
+  const memory = {
+    ...asset,
+    id: `asset-${asset.id}`,
+    source: "platform",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  conversationMemories = uniqueMemories([memory, ...conversationMemories]);
+  renderConversationMemories();
+  renderAssetsPage();
+  saveGlobalMemories();
+  saveSharedAssetsSoon();
+}
+
+let sharedAssetsSaveTimer = null;
+
+function saveSharedAssetsSoon() {
+  clearTimeout(sharedAssetsSaveTimer);
+  sharedAssetsSaveTimer = setTimeout(saveSharedAssets, 900);
+}
+
+async function loadSharedAssets() {
+  try {
+    const response = await fetch(SHARED_ASSETS_API, { cache: "no-store" });
+    const result = await readResponseJson(response);
+    if (!response.ok || result.disabled || !Array.isArray(result.assets)) return;
+    if (!result.assets.length && conversationMemories.length) {
+      saveSharedAssetsSoon();
+      return;
+    }
+    const merged = uniqueMemories([...result.assets, ...conversationMemories]);
+    if (merged.length !== conversationMemories.length) {
+      conversationMemories = merged;
+      saveGlobalMemories();
+      renderConversationMemories();
+      renderAssetsPage();
+    }
+  } catch (error) {
+    console.warn("Shared assets load failed", error);
+  }
+}
+
+async function saveSharedAssets() {
+  if (!conversationMemories.length) return;
+  try {
+    const response = await fetch(SHARED_ASSETS_API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ assets: conversationMemories }),
+    });
+    const result = await readResponseJson(response);
+    if (!response.ok || result.disabled) return;
+    if (Array.isArray(result.assets)) {
+      conversationMemories = uniqueMemories(result.assets);
+      saveGlobalMemories();
+      renderConversationMemories();
+      renderAssetsPage();
+    }
+  } catch (error) {
+    console.warn("Shared assets save failed", error);
   }
 }
 
@@ -4661,7 +4815,7 @@ window.aivideoboxRestoreBackups = function aivideoboxRestoreBackups() {
 window.aivideoboxExportFullBackup = async function aivideoboxExportFullBackup() {
   const local = Object.fromEntries(
     Object.keys(localStorage)
-      .filter((key) => key.startsWith("aivideobox.project.v2:") || key === PROJECT_LIST_KEY)
+      .filter((key) => key.startsWith("aivideobox.project.v2:") || key === PROJECT_LIST_KEY || key === GLOBAL_MEMORY_KEY)
       .map((key) => [key, localStorage.getItem(key)]),
   );
   const images = await exportImageDb();
@@ -4816,7 +4970,9 @@ function escapeHtml(value = "") {
 }
 
 loadImageOptions();
+loadGlobalMemories();
 loadProjectList();
+renderAssetsPage();
 showPage("home");
 startSharedProjectAutoRefresh();
 
