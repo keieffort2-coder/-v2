@@ -96,6 +96,61 @@ button {
   gap: 10px;
 }
 
+.auth-admin-panel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(5, 11, 18, 0.58);
+  padding: 12px;
+}
+
+.auth-admin-panel[hidden] {
+  display: none;
+}
+
+.auth-admin-result {
+  display: grid;
+  gap: 8px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.admin-code-box,
+.admin-code-row {
+  display: grid;
+  gap: 6px;
+  border: 1px solid rgba(22, 217, 245, 0.18);
+  border-radius: 8px;
+  background: rgba(9, 16, 24, 0.72);
+  padding: 10px;
+}
+
+.admin-code-box strong {
+  color: var(--yellow);
+  overflow-wrap: anywhere;
+}
+
+.admin-code-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.admin-code-row span,
+.admin-code-box span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.admin-code-row button {
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0b111a;
+  color: #d8e8f8;
+  padding: 0 10px;
+}
+
 .auth-signout {
   position: fixed;
   right: 18px;
