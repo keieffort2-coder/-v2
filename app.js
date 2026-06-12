@@ -51,8 +51,10 @@ const GLOBAL_MEMORY_KEY = "aivideobox.globalMemories.v1";
 const IMAGE_OPTIONS_KEY = "aivideobox.imageOptions.v1";
 const WORKSPACE_SIDE_STATE_KEY = "aivideobox.workspaceSidebarsHidden.v1";
 const LOCAL_ASSETS_KEY = "aivideobox.localAssets.v1";
+const TEMPLATE_LIBRARY_KEY = "aivideobox.templates.v1";
 const SHARED_PROJECTS_API = "/api/shared-projects";
 const SHARED_ASSETS_API = "/api/shared-assets";
+const SHARED_TEMPLATES_API = "/api/shared-templates";
 const IMAGE_DB_NAME = "aivideobox.images";
 const IMAGE_STORE_NAME = "images";
 const typeLabels = { text: "Text", image: "Image", video: "Video", folder: "Folder" };
@@ -96,6 +98,7 @@ let wireState = null;
 let contextPoint = { x: 120, y: 120 };
 let contextNode = null;
 let contextAssetId = "";
+let contextTemplateId = "";
 let contextUploadNode = null;
 let contextPort = null;
 let configNode = null;
@@ -108,6 +111,8 @@ const selectedNodes = new Set();
 let conversationMemories = [];
 let localAssets = [];
 let platformSharedAssets = [];
+let localTemplates = [];
+let platformSharedTemplates = [];
 let pendingDeletedProjectNames = [];
 let imageOptions = {
   purpose: "自定义",
@@ -127,6 +132,40 @@ pageButtons.forEach((button) => {
 });
 
 document.addEventListener("click", (event) => {
+  const saveTemplateButton = event.target.closest("[data-save-current-template]");
+  if (saveTemplateButton) {
+    saveCurrentProjectAsLocalTemplate();
+    return;
+  }
+
+  const templateUseButton = event.target.closest("[data-use-template]");
+  if (templateUseButton) {
+    useTemplate(templateUseButton.dataset.useTemplate);
+    return;
+  }
+
+  const templatePreviewButton = event.target.closest("[data-preview-template]");
+  if (templatePreviewButton) {
+    const template = getTemplateById(templatePreviewButton.dataset.previewTemplate);
+    if (template) openTemplatePreview(template);
+    return;
+  }
+
+  const templateDeleteButton = event.target.closest("[data-delete-template]");
+  if (templateDeleteButton) {
+    deleteLocalTemplate(templateDeleteButton.dataset.deleteTemplate);
+    return;
+  }
+
+  const templateUnpublishButton = event.target.closest("[data-unpublish-template]");
+  if (templateUnpublishButton) {
+    pendingDeletedTemplateIds.add(templateUnpublishButton.dataset.unpublishTemplate);
+    platformSharedTemplates = platformSharedTemplates.filter((template) => template.id !== templateUnpublishButton.dataset.unpublishTemplate);
+    renderTemplatesPage();
+    saveSharedTemplatesSoon();
+    return;
+  }
+
   const assetUseButton = event.target.closest("[data-use-asset]");
   if (assetUseButton) {
     const asset = getAssetById(assetUseButton.dataset.useAsset);
@@ -176,6 +215,15 @@ document.addEventListener("click", (event) => {
 });
 
 document.addEventListener("contextmenu", (event) => {
+  const templateCard = event.target.closest("[data-template-card]");
+  if (templateCard) {
+    event.preventDefault();
+    contextTemplateId = templateCard.dataset.templateCard || "";
+    syncTemplateContextMenu(getTemplateById(contextTemplateId));
+    showMenu(ensureTemplateContextMenu(), event.clientX, event.clientY);
+    return;
+  }
+
   const assetCard = event.target.closest("[data-asset-card]");
   if (!assetCard || !assetContextMenu) return;
   event.preventDefault();
@@ -428,6 +476,21 @@ assetContextMenu?.addEventListener("click", (event) => {
     platformSharedAssets = platformSharedAssets.filter((asset) => asset.id !== contextAssetId);
     renderAssetsPage();
     saveSharedAssetsSoon();
+  }
+  hideMenus();
+});
+
+document.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-template-action]");
+  if (!button || !contextTemplateId) return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (button.dataset.templateAction === "publish") publishLocalTemplateToPlatform(contextTemplateId);
+  if (button.dataset.templateAction === "unpublish") {
+    pendingDeletedTemplateIds.add(contextTemplateId);
+    platformSharedTemplates = platformSharedTemplates.filter((template) => template.id !== contextTemplateId);
+    renderTemplatesPage();
+    saveSharedTemplatesSoon();
   }
   hideMenus();
 });
@@ -1049,6 +1112,10 @@ function showPage(name) {
   if (name === "assets") {
     loadSharedAssets();
     renderAssetsPage();
+  }
+  if (name === "templates") {
+    loadSharedTemplates();
+    renderTemplatesPage();
   }
 }
 
@@ -2041,6 +2108,249 @@ function formatAssetTime(value) {
   if (!value) return "-";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString("zh-CN");
+}
+
+function loadTemplates() {
+  const saved = readJson(TEMPLATE_LIBRARY_KEY, []);
+  localTemplates = Array.isArray(saved) ? saved : [];
+}
+
+function saveTemplates() {
+  try {
+    localStorage.setItem(TEMPLATE_LIBRARY_KEY, JSON.stringify(localTemplates));
+  } catch (error) {
+    console.error("Template save failed", error);
+  }
+}
+
+async function saveCurrentProjectAsLocalTemplate() {
+  if (!currentProject) return;
+  saveCurrentProject();
+  const source = readJson(projectKey(currentProject), serializeCanvasData());
+  const data = structuredClone(source || { nodes: [], connections: [] });
+  await inlineProjectNodeImages(data.nodes);
+  const template = {
+    id: createTemplateId(),
+    source: "local",
+    title: `${currentProject} 模板`,
+    description: `来自工作台项目：${currentProject}`,
+    projectName: currentProject,
+    data,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  localTemplates = uniqueTemplates([template, ...localTemplates]);
+  saveTemplates();
+  renderTemplatesPage();
+}
+
+function renderTemplatesPage() {
+  const page = document.querySelector("#page-templates");
+  if (!page) return;
+  page.innerHTML = `
+    <div class="assets-header">
+      <div>
+        <span class="kicker">TEMPLATES</span>
+        <h1>模板库</h1>
+        <p>保存完整工作台画布为本地模板；确认可复用后，再右键上传到平台模板。</p>
+      </div>
+      <button class="subtle-button" data-page="projects" type="button">返回工作台</button>
+    </div>
+    <div class="assets-actions">
+      <button class="yellow-button" data-save-current-template type="button">+ 保存当前项目为模板</button>
+    </div>
+    <section class="my-assets template-section">
+      <h2>本地模板</h2>
+      <p>只保存在当前浏览器，不会自动共享。</p>
+      <div class="empty-assets local-template-empty" ${localTemplates.length ? "hidden" : ""}>
+        <div>T</div>
+        <strong>还没有本地模板</strong>
+        <span>打开一个工作台项目后，点击上方按钮保存完整画布。</span>
+      </div>
+      <div class="template-grid my-assets-list">${localTemplates.map((template) => renderTemplateCard(template, "local")).join("")}</div>
+    </section>
+    <section class="platform-assets template-section">
+      <h2>平台模板</h2>
+      <p>上传到平台后，其他电脑和账号也能复用。</p>
+      <div class="empty-assets platform-template-empty" ${platformSharedTemplates.length ? "hidden" : ""}>
+        <div>P</div>
+        <strong>暂无平台模板</strong>
+        <span>在本地模板卡片上右键，选择上传到平台。</span>
+      </div>
+      <div class="template-grid my-assets-list">${platformSharedTemplates.map((template) => renderTemplateCard(template, "platform")).join("")}</div>
+    </section>
+  `;
+}
+
+function renderTemplateCard(template, scope) {
+  const stats = getTemplateStats(template);
+  const thumb = getProjectThumbnail(template.data);
+  const isPlatform = scope === "platform";
+  return `
+    <article class="asset-card project-card template-card" data-template-card="${escapeHtml(template.id)}" data-template-scope="${escapeHtml(scope)}">
+      <div class="project-row">
+        <div class="folder-icon"><svg viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" /></svg></div>
+        <div>
+          <strong>${escapeHtml(template.title || "未命名模板")}</strong>
+          <span>${escapeHtml(isPlatform ? "平台模板" : "本地模板")}</span>
+          <small>${escapeHtml(`节点 ${stats.nodes} / 连接 ${stats.connections}`)}</small>
+        </div>
+      </div>
+      <div class="project-thumb asset-thumb ${thumb ? "has-image" : ""}">
+        ${thumb ? `<img src="${escapeHtml(thumb)}" alt="">` : `<span>${escapeHtml(template.description || "完整画布模板。")}</span>`}
+      </div>
+      <div class="asset-card-actions">
+        <button type="button" data-preview-template="${escapeHtml(template.id)}">预览</button>
+        <button class="open-canvas" type="button" data-use-template="${escapeHtml(template.id)}">使用模板</button>
+        ${
+          isPlatform
+            ? `<button class="delete-project" type="button" data-unpublish-template="${escapeHtml(template.id)}">移出平台</button>`
+            : `<button class="delete-project" type="button" data-delete-template="${escapeHtml(template.id)}">删除</button>`
+        }
+      </div>
+    </article>
+  `;
+}
+
+function getTemplateStats(template) {
+  return {
+    nodes: Array.isArray(template?.data?.nodes) ? template.data.nodes.length : 0,
+    connections: Array.isArray(template?.data?.connections) ? template.data.connections.length : 0,
+  };
+}
+
+function getTemplateById(id) {
+  return localTemplates.find((template) => template.id === id) || platformSharedTemplates.find((template) => template.id === id) || null;
+}
+
+function useTemplate(id) {
+  const template = getTemplateById(id);
+  if (!template?.data) return;
+  const name = createFreshProject(template.title || "模板项目");
+  const data = structuredClone(template.data);
+  localStorage.setItem(projectKey(name), JSON.stringify(data));
+  updateProjectCardThumbnail(name, data);
+  saveSharedProject(name, data);
+  openProject(name);
+}
+
+function deleteLocalTemplate(id) {
+  localTemplates = localTemplates.filter((template) => template.id !== id);
+  saveTemplates();
+  renderTemplatesPage();
+}
+
+async function publishLocalTemplateToPlatform(id) {
+  const template = localTemplates.find((item) => item.id === id);
+  if (!template) return;
+  const shared = {
+    ...template,
+    source: "platform",
+    updatedAt: new Date().toISOString(),
+  };
+  platformSharedTemplates = uniqueTemplates([shared, ...platformSharedTemplates]);
+  renderTemplatesPage();
+  saveSharedTemplatesSoon();
+}
+
+function openTemplatePreview(template) {
+  const stats = getTemplateStats(template);
+  const previewAsset = {
+    id: template.id,
+    source: template.source,
+    title: template.title,
+    content: template.description || `节点 ${stats.nodes} / 连接 ${stats.connections}`,
+    nodeSnapshot: {
+      type: "folder",
+      title: template.title,
+      content: template.description,
+      folderNodes: template.data?.nodes || [],
+      folderConnections: template.data?.connections || [],
+    },
+    updatedAt: template.updatedAt,
+    createdAt: template.createdAt,
+  };
+  openAssetPreview(previewAsset);
+}
+
+function uniqueTemplates(templates) {
+  const seen = new Set();
+  return templates.filter((template) => {
+    const id = String(template?.id || "").trim();
+    if (!id || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+}
+
+function createTemplateId() {
+  return `template-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function ensureTemplateContextMenu() {
+  let menu = document.querySelector("#templateContextMenu");
+  if (menu) return menu;
+  menu = document.createElement("div");
+  menu.id = "templateContextMenu";
+  menu.className = "context-menu";
+  menu.setAttribute("role", "menu");
+  menu.setAttribute("aria-hidden", "true");
+  menu.innerHTML = `
+    <div class="context-title">模板操作</div>
+    <button type="button" data-template-action="publish">上传到平台</button>
+    <button type="button" data-template-action="unpublish">移出平台</button>
+  `;
+  document.body.appendChild(menu);
+  return menu;
+}
+
+function syncTemplateContextMenu(template) {
+  const menu = ensureTemplateContextMenu();
+  const publishButton = menu.querySelector('[data-template-action="publish"]');
+  const unpublishButton = menu.querySelector('[data-template-action="unpublish"]');
+  const isPlatform = platformSharedTemplates.some((item) => item.id === template?.id);
+  if (publishButton) publishButton.hidden = !template || isPlatform || !localTemplates.some((item) => item.id === template.id);
+  if (unpublishButton) unpublishButton.hidden = !template || !isPlatform;
+}
+
+let sharedTemplatesSaveTimer = null;
+const pendingDeletedTemplateIds = new Set();
+
+function saveSharedTemplatesSoon() {
+  clearTimeout(sharedTemplatesSaveTimer);
+  sharedTemplatesSaveTimer = setTimeout(saveSharedTemplates, 900);
+}
+
+async function loadSharedTemplates() {
+  try {
+    const response = await fetch(SHARED_TEMPLATES_API, { cache: "no-store" });
+    const result = await readResponseJson(response);
+    if (!response.ok || result.disabled || !Array.isArray(result.templates)) return;
+    platformSharedTemplates = uniqueTemplates(result.templates.filter((template) => !pendingDeletedTemplateIds.has(template?.id)));
+    renderTemplatesPage();
+  } catch (error) {
+    console.warn("Shared templates load failed", error);
+  }
+}
+
+async function saveSharedTemplates() {
+  if (!platformSharedTemplates.length && !pendingDeletedTemplateIds.size) return;
+  try {
+    const response = await fetch(SHARED_TEMPLATES_API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ templates: platformSharedTemplates, deletedIds: [...pendingDeletedTemplateIds] }),
+    });
+    const result = await readResponseJson(response);
+    if (!response.ok || result.disabled) return;
+    pendingDeletedTemplateIds.clear();
+    if (Array.isArray(result.templates)) {
+      platformSharedTemplates = uniqueTemplates(result.templates);
+      renderTemplatesPage();
+    }
+  } catch (error) {
+    console.warn("Shared templates save failed", error);
+  }
 }
 
 let sharedAssetsSaveTimer = null;
@@ -4916,14 +5226,17 @@ function hideMenus() {
   canvasContextMenu.classList.remove("show");
   nodeContextMenu.classList.remove("show");
   assetContextMenu?.classList.remove("show");
+  document.querySelector("#templateContextMenu")?.classList.remove("show");
   imageUploadContextMenu?.classList.remove("show");
   portConnectionContextMenu?.classList.remove("show");
   canvasContextMenu.setAttribute("aria-hidden", "true");
   nodeContextMenu.setAttribute("aria-hidden", "true");
   assetContextMenu?.setAttribute("aria-hidden", "true");
+  document.querySelector("#templateContextMenu")?.setAttribute("aria-hidden", "true");
   imageUploadContextMenu?.setAttribute("aria-hidden", "true");
   portConnectionContextMenu?.setAttribute("aria-hidden", "true");
   contextAssetId = "";
+  contextTemplateId = "";
   contextUploadNode = null;
   contextPort = null;
 }
@@ -5111,7 +5424,12 @@ window.aivideoboxRestoreBackups = function aivideoboxRestoreBackups() {
 window.aivideoboxExportFullBackup = async function aivideoboxExportFullBackup() {
   const local = Object.fromEntries(
     Object.keys(localStorage)
-      .filter((key) => key.startsWith("aivideobox.project.v2:") || key === PROJECT_LIST_KEY || key === GLOBAL_MEMORY_KEY)
+      .filter((key) =>
+        key.startsWith("aivideobox.project.v2:") ||
+        key === PROJECT_LIST_KEY ||
+        key === GLOBAL_MEMORY_KEY ||
+        key === LOCAL_ASSETS_KEY ||
+        key === TEMPLATE_LIBRARY_KEY)
       .map((key) => [key, localStorage.getItem(key)]),
   );
   const images = await exportImageDb();
@@ -5267,8 +5585,10 @@ function escapeHtml(value = "") {
 
 loadImageOptions();
 loadGlobalMemories();
+loadTemplates();
 loadProjectList();
 renderAssetsPage();
+renderTemplatesPage();
 showPage("home");
 startSharedProjectAutoRefresh();
 
