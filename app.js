@@ -163,6 +163,7 @@ document.addEventListener("click", (event) => {
 
   const assetDeleteButton = event.target.closest("[data-delete-asset]");
   if (assetDeleteButton) {
+    pendingDeletedAssetIds.add(assetDeleteButton.dataset.deleteAsset);
     conversationMemories = conversationMemories.filter((memory) => memory.id !== assetDeleteButton.dataset.deleteAsset);
     renderConversationMemories();
     renderAssetsPage();
@@ -360,6 +361,8 @@ nodeContextMenu?.addEventListener("click", (event) => {
     }
   } else if (action === "duplicate") {
     getActionNodes(contextNode).forEach(duplicateNode);
+  } else if (action === "save-asset") {
+    saveNodesToAssetLibrary(getActionNodes(contextNode));
   } else if (action === "ungroup-folder") {
     ungroupFolderNode(contextNode);
   } else if (action === "run") {
@@ -1588,7 +1591,7 @@ function createNodeFromMemory(memory, point = null) {
 }
 
 function createMemoryFromNode(node, note = "") {
-  const snapshot = stripMediaFromNodeSnapshot(serializeNodes([node])[0]);
+  const snapshot = createAssetSnapshotFromNode(node);
   const title = note.trim() || snapshot.title || node.querySelector(".node-title strong")?.textContent || "节点记忆";
   return {
     id: createMemoryId(),
@@ -1596,8 +1599,37 @@ function createMemoryFromNode(node, note = "") {
     title: createMemoryTitle(title),
     content: note.trim() || snapshot.content || snapshot.title || "",
     nodeSnapshot: snapshot,
+    assetKind: "node",
     createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   };
+}
+
+function createAssetSnapshotFromNode(node) {
+  const snapshot = serializeNodes([node])[0];
+  if (node.dataset.imageDataUrl) {
+    snapshot.imageDataUrl = node.dataset.imageDataUrl;
+    snapshot.imageDataKey = "";
+  }
+  if (node.dataset.referenceImageDataUrl) {
+    snapshot.referenceImageDataUrl = node.dataset.referenceImageDataUrl;
+    snapshot.referenceImageDataKey = "";
+  }
+  return snapshot;
+}
+
+function saveNodesToAssetLibrary(nodes) {
+  const validNodes = nodes.filter((node) => node?.isConnected);
+  if (!validNodes.length) return;
+  const assets = validNodes.map((node) => createMemoryFromNode(node));
+  conversationMemories = uniqueMemories([...assets, ...conversationMemories]);
+  renderConversationMemories();
+  renderAssetsPage();
+  saveGlobalMemories();
+  saveSharedAssetsSoon();
+  validNodes.forEach((node) => {
+    ensureNodeStatus(node).textContent = validNodes.length > 1 ? "已批量上传到素材库。" : "已上传到素材库。";
+  });
 }
 
 function stripMediaFromNodeSnapshot(snapshot) {
@@ -1710,19 +1742,43 @@ function renderAssetsPage() {
   list.innerHTML = conversationMemories
     .map((asset) => {
       const typeLabel = asset.nodeSnapshot ? "节点配置" : typeNames[asset.type] || "文本";
+      const preview = getAssetPreview(asset);
       return `
-        <article class="asset-card">
-          <small>${escapeHtml(typeLabel)}</small>
-          <h3>${escapeHtml(asset.title || "未命名素材")}</h3>
-          <p>${escapeHtml(asset.content || asset.nodeSnapshot?.content || "已保存的画布节点素材。")}</p>
+        <article class="asset-card project-card">
+          <div class="project-row">
+            <div class="folder-icon"><svg viewBox="0 0 24 24"><path d="M4 7h16v12H4z" /><path d="M7 7V5h10v2" /></svg></div>
+            <div>
+              <strong>${escapeHtml(asset.title || "未命名素材")}</strong>
+              <span>${escapeHtml(typeLabel)}</span>
+              <small>${escapeHtml(getAssetMeta(asset))}</small>
+            </div>
+          </div>
+          <div class="project-thumb asset-thumb ${preview ? "has-image" : ""}">
+            ${preview ? `<img src="${escapeHtml(preview)}" alt="">` : `<span>${escapeHtml(asset.content || asset.nodeSnapshot?.content || "已保存的画布节点素材。")}</span>`}
+          </div>
           <div class="asset-card-actions">
-            <button type="button" data-use-asset="${escapeHtml(asset.id)}">放入画布</button>
-            <button type="button" class="danger" data-delete-asset="${escapeHtml(asset.id)}">删除</button>
+            <button class="open-canvas" type="button" data-use-asset="${escapeHtml(asset.id)}">上传画布</button>
+            <button class="delete-project" type="button" data-delete-asset="${escapeHtml(asset.id)}">删除</button>
           </div>
         </article>
       `;
     })
     .join("");
+}
+
+function getAssetMeta(asset) {
+  if (asset.nodeSnapshot) {
+    const snapshot = asset.nodeSnapshot;
+    const childCount = Array.isArray(snapshot.folderNodes) ? snapshot.folderNodes.length : 0;
+    return childCount ? `完整节点 / 子节点 ${childCount}` : "完整节点";
+  }
+  return asset.source === "platform" ? "平台素材" : "通用素材";
+}
+
+function getAssetPreview(asset) {
+  const candidates = [];
+  if (asset.nodeSnapshot) collectNodeThumbnailCandidates(asset.nodeSnapshot, candidates);
+  return candidates.find(isRemoteImageUrl) || candidates.find((value) => typeof value === "string" && value.startsWith("data:image/")) || "";
 }
 
 function addPlatformAssetToLibrary(id) {
@@ -1743,6 +1799,7 @@ function addPlatformAssetToLibrary(id) {
 }
 
 let sharedAssetsSaveTimer = null;
+const pendingDeletedAssetIds = new Set();
 
 function saveSharedAssetsSoon() {
   clearTimeout(sharedAssetsSaveTimer);
@@ -1758,7 +1815,8 @@ async function loadSharedAssets() {
       saveSharedAssetsSoon();
       return;
     }
-    const merged = uniqueMemories([...result.assets, ...conversationMemories]);
+    const remoteAssets = result.assets.filter((asset) => !pendingDeletedAssetIds.has(asset?.id));
+    const merged = uniqueMemories([...remoteAssets, ...conversationMemories]);
     if (merged.length !== conversationMemories.length) {
       conversationMemories = merged;
       saveGlobalMemories();
@@ -1771,15 +1829,16 @@ async function loadSharedAssets() {
 }
 
 async function saveSharedAssets() {
-  if (!conversationMemories.length) return;
+  if (!conversationMemories.length && !pendingDeletedAssetIds.size) return;
   try {
     const response = await fetch(SHARED_ASSETS_API, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ assets: conversationMemories }),
+      body: JSON.stringify({ assets: conversationMemories, deletedIds: [...pendingDeletedAssetIds] }),
     });
     const result = await readResponseJson(response);
     if (!response.ok || result.disabled) return;
+    pendingDeletedAssetIds.clear();
     if (Array.isArray(result.assets)) {
       conversationMemories = uniqueMemories(result.assets);
       saveGlobalMemories();
